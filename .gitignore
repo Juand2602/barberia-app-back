@@ -12,8 +12,6 @@ build/
 .env.production
 
 # Prisma
-prisma/migrations/
-!prisma/migrations/.gitkeep
 
 # Database
 *.db
