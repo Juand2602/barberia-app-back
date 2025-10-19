@@ -1,0 +1,200 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== CLIENTES ====================
+model Cliente {
+  id              String   @id @default(uuid())
+  nombre          String
+  telefono        String   @unique
+  email           String?
+  fechaRegistro   DateTime @default(now())
+  notas           String?
+  activo          Boolean  @default(true)
+  
+  citas           Cita[]
+  conversaciones  Conversacion[]
+  transacciones   Transaccion[]
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([telefono])
+  @@index([nombre])
+}
+
+// ==================== EMPLEADOS ====================
+model Empleado {
+  id              String   @id @default(uuid())
+  nombre          String
+  telefono        String
+  especialidades  String   // JSON: ["corte", "barba"]
+  activo          Boolean  @default(true)
+  fechaIngreso    DateTime @default(now())
+  
+  horarioLunes    String?  // JSON: {"inicio": "09:00", "fin": "18:00"}
+  horarioMartes   String?
+  horarioMiercoles String?
+  horarioJueves   String?
+  horarioViernes  String?
+  horarioSabado   String?
+  horarioDomingo  String?
+  
+  citas           Cita[]
+  transacciones   Transaccion[]
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([activo])
+}
+
+// ==================== SERVICIOS ====================
+model Servicio {
+  id              String   @id @default(uuid())
+  nombre          String
+  descripcion     String?
+  precio          Float
+  duracionMinutos Int
+  activo          Boolean  @default(true)
+  
+  items           TransaccionItem[]
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([activo])
+}
+
+// ==================== CITAS ====================
+model Cita {
+  id              String   @id @default(uuid())
+  radicado        String   @unique
+  clienteId       String
+  empleadoId      String
+  servicioNombre  String
+  fechaHora       DateTime
+  duracionMinutos Int
+  estado          String   @default("PENDIENTE") // PENDIENTE, CONFIRMADA, COMPLETADA, CANCELADA
+  origen          String   @default("WHATSAPP") // WHATSAPP, MANUAL, TELEFONO
+  notas           String?
+  motivoCancelacion String?
+  
+  cliente         Cliente  @relation(fields: [clienteId], references: [id])
+  empleado        Empleado @relation(fields: [empleadoId], references: [id])
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([fechaHora])
+  @@index([radicado])
+  @@index([empleadoId, fechaHora])
+  @@index([estado])
+}
+
+// ==================== CONVERSACIONES (CONTEXTO BOT) ====================
+model Conversacion {
+  id              String   @id @default(uuid())
+  clienteId       String
+  telefono        String
+  estado          String   @default("INICIAL")
+  contexto        String   // JSON con datos temporales
+  lastActivity    DateTime @default(now())
+  activa          Boolean  @default(true)
+  
+  cliente         Cliente  @relation(fields: [clienteId], references: [id])
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([telefono, activa])
+  @@index([lastActivity])
+}
+
+// ==================== TRANSACCIONES ====================
+model Transaccion {
+  id              String   @id @default(uuid())
+  tipo            String   // INGRESO, EGRESO
+  clienteId       String?
+  empleadoId      String?
+  fecha           DateTime @default(now())
+  total           Float
+  metodoPago      String   // EFECTIVO, TRANSFERENCIA
+  referencia      String?
+  concepto        String?
+  categoria       String?
+  notas           String?
+  
+  items           TransaccionItem[]
+  cliente         Cliente? @relation(fields: [clienteId], references: [id])
+  empleado        Empleado? @relation(fields: [empleadoId], references: [id])
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([fecha])
+  @@index([tipo, fecha])
+  @@index([metodoPago])
+}
+
+model TransaccionItem {
+  id              String      @id @default(uuid())
+  transaccionId   String
+  servicioId      String
+  cantidad        Int         @default(1)
+  precioUnitario  Float
+  subtotal        Float
+  
+  transaccion     Transaccion @relation(fields: [transaccionId], references: [id], onDelete: Cascade)
+  servicio        Servicio    @relation(fields: [servicioId], references: [id])
+  
+  createdAt       DateTime    @default(now())
+  
+  @@index([transaccionId])
+}
+
+// ==================== CIERRE DE CAJA ====================
+model CierreCaja {
+  id                String   @id @default(uuid())
+  fecha             DateTime @default(now())
+  efectivoInicial   Float
+  efectivoFinal     Float
+  efectivoEsperado  Float
+  ingresos          Float
+  egresos           Float
+  diferencia        Float
+  totalTransferencias Float
+  notas             String?
+  
+  createdAt         DateTime @default(now())
+  
+  @@index([fecha])
+}
+
+// ==================== CONFIGURACIÓN ====================
+model Configuracion {
+  id                String   @id @default(uuid())
+  clave             String   @unique
+  valor             String
+  descripcion       String?
+  
+  updatedAt         DateTime @updatedAt
+}
+
+model AperturaCaja {
+  id           String   @id @default(uuid())
+  usuarioId    Int?
+  fecha        DateTime @default(now())
+  montoInicial Float
+  estado       String   @default("ABIERTA") // "ABIERTA" | "CERRADA"
+  notas        String? 
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([usuarioId])
+}
