@@ -23,15 +23,13 @@ export class WhatsAppBotService {
       let conversacion = await this.obtenerConversacionActiva(telefono);
       
       if (!conversacion) {
-        // <-- CORRECCIÓN: crearConversación ahora devuelve el mismo tipo de objeto
+        // Crear conversación si no existe
         conversacion = await this.crearConversacion(telefono);
         await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.BIENVENIDA());
         return;
       }
 
-      // Ya no es necesaria la comprobación de seguridad aquí, porque si conversacion no es null,
-      // TypeScript sabe que 'cliente' existe (aunque sea null, la propiedad está).
-      // Sin embargo, es una buena práctica mantenerla por si la base de datos se vuelve inconsistente.
+      // Si por alguna razón no tiene cliente incluido, reiniciamos la conversación
       if (!conversacion.cliente) {
           console.error(`Conversación ${conversacion.id} sin cliente asociado. Reiniciando.`);
           await this.finalizarConversacion(conversacion.id);
@@ -247,7 +245,6 @@ export class WhatsAppBotService {
     });
   }
 
-  // <-- CORRECCIÓN CLAVE: Añadimos 'include' para que el tipo de retorno sea consistente.
   private async crearConversacion(telefono: string) {
     let cliente = await clientesService.buscarPorTelefono(telefono);
     if (!cliente) {
@@ -261,7 +258,7 @@ export class WhatsAppBotService {
         contexto: JSON.stringify({}),
         activa: true,
       },
-      include: { // <-- AQUÍ
+      include: {
         cliente: true,
       },
     });
