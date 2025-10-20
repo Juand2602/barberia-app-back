@@ -1,4 +1,3 @@
-// src/app.ts
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -24,18 +23,7 @@ const PORT = process.env.PORT || 3000;
 
 // ==================== MIDDLEWARES ====================
 app.use(cors());
-
-// IMPORTANT: save raw body for /webhook so we can validate HMAC signature
-app.use(express.json({
-  verify: (req: any, res, buf) => {
-    // Guardamos rawBody solo si la ruta empieza por /webhook
-    // de esta forma no afectamos otros endpoints
-    if (req && req.originalUrl && req.originalUrl.startsWith('/webhook')) {
-      req.rawBody = buf;
-    }
-  },
-}));
-
+app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Logging middleware
@@ -56,8 +44,8 @@ app.use('/api/reportes', reportesRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
-  res.json({
-    status: 'ok',
+  res.json({ 
+    status: 'ok', 
     timestamp: new Date().toISOString(),
     service: 'barberia-whatsapp-api'
   });
@@ -65,7 +53,7 @@ app.get('/health', (req, res) => {
 
 // Root
 app.get('/', (req, res) => {
-  res.json({
+  res.json({ 
     message: '💈 API Barbería WhatsApp',
     version: '1.0.0',
     endpoints: {

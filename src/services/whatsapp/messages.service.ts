@@ -13,11 +13,7 @@ export class WhatsAppMessagesService {
       });
       return response.data;
     } catch (error: any) {
-      if (process.env.NODE_ENV === 'development') {
-        console.error('Error enviando mensaje WhatsApp:', error.response?.data || error.message);
-      } else {
-        console.error('Error enviando mensaje WhatsApp:', error.message);
-      }
+      console.error('Error enviando mensaje WhatsApp:', error.response?.data || error.message);
       throw error;
     }
   }
