@@ -1,13 +1,39 @@
+// src/services/whatsapp/bot.service.ts
 import prisma from '../../config/database';
 import { whatsappMessagesService } from './messages.service';
 import { messageParser } from './parser.service';
-import { MENSAJES, generarRadicado, formatearFecha, formatearHora, validarNombreCompleto } from './templates';
+import {
+  MENSAJES,
+  generarRadicado,
+  formatearFecha,
+  formatearHora,
+  validarNombreCompleto,
+} from './templates';
 import { clientesService } from '../clientes.service';
 import { serviciosService } from '../servicios.service';
 import { empleadosService } from '../empleados.service';
 import { citasService } from '../citas.service';
 import { ConversationState, ConversationContext } from '../../types';
 import { botConfig } from '../../config/whatsapp';
+
+// ---- Helpers ----
+// Normaliza teléfonos para comparar (quita todo lo que no sean dígitos)
+function normalizeDigits(phone?: string | null) {
+  return (phone || '').toString().replace(/\D/g, '');
+}
+
+/**
+ * Compara dos teléfonos de forma tolerante:
+ * devuelve true si uno de los números termina con el otro (sufijo),
+ * lo que permite comparar +57... con 57... o con números sin prefijo.
+ */
+function phonesMatch(a?: string | null, b?: string | null) {
+  if (!a || !b) return false;
+  const A = normalizeDigits(a);
+  const B = normalizeDigits(b);
+  if (!A || !B) return false;
+  return A === B || A.endsWith(B) || B.endsWith(A) || A.slice(-9) === B.slice(-9);
+}
 
 // Define un tipo para el servicio que espera la plantilla de mensaje
 type ServicioParaPlantilla = {
@@ -28,7 +54,7 @@ export class WhatsAppBotService {
         return;
       }
 
-      if (!conversacion.cliente) {
+      if (!('cliente' in conversacion) || !conversacion.cliente) {
         console.error(`Conversación ${conversacion.id} sin cliente asociado. Reiniciando.`);
         await this.finalizarConversacion(conversacion.id);
         const nuevaConversacion = await this.crearConversacion(telefono);
@@ -40,14 +66,17 @@ export class WhatsAppBotService {
       await this.actualizarActividad(conversacion.id);
 
       const estado = conversacion.estado as ConversationState;
-      const contexto: ConversationContext = JSON.parse(conversacion.contexto);
+      const contexto: ConversationContext = JSON.parse(conversacion.contexto || '{}');
 
       // Procesar según el estado
       await this.procesarEstado(telefono, mensaje, estado, contexto, conversacion.id);
-
     } catch (error) {
       console.error('Error procesando mensaje:', error);
-      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.ERROR_SERVIDOR());
+      try {
+        await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.ERROR_SERVIDOR());
+      } catch (e) {
+        console.error('Error enviando mensaje de error al usuario:', e);
+      }
     }
   }
 
@@ -85,42 +114,49 @@ export class WhatsAppBotService {
     }
   }
 
-  /**
-   * Maneja el estado inicial.
-   *
-   * Cambios principales:
-   *  - Si el usuario responde "sí" o "si" (afirmativo) -> mostramos el menú/principal de nuevo.
-   *  - Si el usuario responde "no" (negativo) -> despedimos y finalizamos conversación.
-   *  - Si no es yes/no, seguimos intentando parsear la opción numérica (1..4).
-   */
-  private async manejarInicial(telefono: string, mensaje: string, contexto: ConversationContext, conversacionId: string) {
-    // Primero detectamos respuestas afirmativas / negativas (p. ej. tras MENSAJES.PUEDE_SERVIR_MAS())
+  // ---------- Estados ----------
+  private async manejarInicial(
+    telefono: string,
+    mensaje: string,
+    contexto: ConversationContext,
+    conversacionId: string
+  ) {
+    // Manejo de respuestas cortas al "¿Puedo ayudar con algo más?"
     if (messageParser.esAfirmativo(mensaje)) {
-      // El usuario quiere que lo ayude nuevamente -> enviamos el menú principal
       await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.BIENVENIDA());
       await this.actualizarConversacion(conversacionId, 'INICIAL', contexto);
       return;
     }
 
     if (messageParser.esNegativo(mensaje)) {
-      // El usuario no necesita más ayuda -> despedida y finalizamos
       await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.DESPEDIDA());
       await this.finalizarConversacion(conversacionId);
       return;
     }
 
-    // Si no es sí/no, intentamos parsear opción numérica
     const opcion = messageParser.parsearOpcionNumerica(mensaje, 4);
     if (opcion === 1) {
       await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.UBICACION());
       await this.actualizarConversacion(conversacionId, 'INICIAL', contexto);
     } else if (opcion === 2) {
       const servicios = await serviciosService.listarActivos();
-      const serviciosParaPlantilla: ServicioParaPlantilla[] = servicios.map(s => ({
+      if (!servicios || servicios.length === 0) {
+        await whatsappMessagesService.enviarMensaje(
+          telefono,
+          'Lo siento, aún no tenemos servicios cargados. Por favor contacta con la barbería.'
+        );
+        await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.PUEDE_SERVIR_MAS());
+        await this.actualizarConversacion(conversacionId, 'INICIAL', contexto);
+        return;
+      }
+
+      // Mapear a la forma que la plantilla espera (forzar undefined si es null)
+      const serviciosParaPlantilla: ServicioParaPlantilla[] = servicios.map((s) => ({
         nombre: s.nombre,
         precio: s.precio,
-        descripcion: s.descripcion ?? undefined,
+        descripcion: (s.descripcion ?? undefined) as string | undefined,
       }));
+
       await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.LISTA_PRECIOS(serviciosParaPlantilla));
       await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.PUEDE_SERVIR_MAS());
       await this.actualizarConversacion(conversacionId, 'INICIAL', contexto);
@@ -136,7 +172,12 @@ export class WhatsAppBotService {
     }
   }
 
-  private async manejarSeleccionBarbero(telefono: string, mensaje: string, contexto: ConversationContext, conversacionId: string) {
+  private async manejarSeleccionBarbero(
+    telefono: string,
+    mensaje: string,
+    contexto: ConversationContext,
+    conversacionId: string
+  ) {
     const barberos = await empleadosService.getAll(true);
     const opcion = messageParser.parsearOpcionNumerica(mensaje, barberos.length);
     if (opcion) {
@@ -153,7 +194,12 @@ export class WhatsAppBotService {
     }
   }
 
-  private async manejarNombre(telefono: string, mensaje: string, contexto: ConversationContext, conversacionId: string) {
+  private async manejarNombre(
+    telefono: string,
+    mensaje: string,
+    contexto: ConversationContext,
+    conversacionId: string
+  ) {
     if (validarNombreCompleto(mensaje)) {
       contexto.nombre = mensaje;
       await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.SOLICITAR_FECHA());
@@ -163,7 +209,12 @@ export class WhatsAppBotService {
     }
   }
 
-  private async manejarFecha(telefono: string, mensaje: string, contexto: ConversationContext, conversacionId: string) {
+  private async manejarFecha(
+    telefono: string,
+    mensaje: string,
+    contexto: ConversationContext,
+    conversacionId: string
+  ) {
     const fecha = messageParser.parsearFecha(mensaje);
     if (fecha) {
       contexto.fecha = fecha.toISOString();
@@ -184,7 +235,12 @@ export class WhatsAppBotService {
     }
   }
 
-  private async manejarHora(telefono: string, mensaje: string, contexto: ConversationContext, conversacionId: string) {
+  private async manejarHora(
+    telefono: string,
+    mensaje: string,
+    contexto: ConversationContext,
+    conversacionId: string
+  ) {
     if (messageParser.normalizarRespuesta(mensaje) === 'cancelar') {
       await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.DESPEDIDA());
       await this.finalizarConversacion(conversacionId);
@@ -206,13 +262,25 @@ export class WhatsAppBotService {
       const servicios = await serviciosService.listarActivos();
       const servicio = servicios[0];
       await citasService.create({
-        radicado, clienteId: cliente.id, empleadoId: contexto.empleadoId!,
-        servicioNombre: servicio.nombre, fechaHora, duracionMinutos: servicio.duracionMinutos, origen: 'WHATSAPP',
+        radicado,
+        clienteId: cliente.id,
+        empleadoId: contexto.empleadoId!,
+        servicioNombre: servicio.nombre,
+        fechaHora,
+        duracionMinutos: servicio.duracionMinutos,
+        origen: 'WHATSAPP',
       });
-      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.CITA_CONFIRMADA({
-        radicado, servicio: servicio.nombre, barbero: contexto.empleadoNombre!,
-        fecha: formatearFecha(fechaHora), hora: formatearHora(horaSeleccionada),
-      }));
+      // Indicar que el radicado puede copiarse
+      await whatsappMessagesService.enviarMensaje(
+        telefono,
+        MENSAJES.CITA_CONFIRMADA({
+          radicado,
+          servicio: servicio.nombre,
+          barbero: contexto.empleadoNombre!,
+          fecha: formatearFecha(fechaHora),
+          hora: formatearHora(horaSeleccionada),
+        })
+      );
       await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.PUEDE_SERVIR_MAS());
       await this.actualizarConversacion(conversacionId, 'INICIAL', {});
     } else {
@@ -220,32 +288,71 @@ export class WhatsAppBotService {
     }
   }
 
-  private async manejarRadicado(telefono: string, mensaje: string, contexto: ConversationContext, conversacionId: string) {
+  private async manejarRadicado(
+    telefono: string,
+    mensaje: string,
+    contexto: ConversationContext,
+    conversacionId: string
+  ) {
+    // Si el usuario responde "Sí" -> pedir código radicado
     if (messageParser.esAfirmativo(mensaje)) {
       await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.SOLICITAR_CODIGO_RADICADO());
       return;
     }
+
+    // Si el usuario responde "No" -> volver al flujo inicial
     if (messageParser.esNegativo(mensaje)) {
       await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.SIN_RADICADO());
       await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.PUEDE_SERVIR_MAS());
       await this.actualizarConversacion(conversacionId, 'INICIAL', {});
       return;
     }
-    const cita = await citasService.buscarPorRadicado(mensaje.trim().toUpperCase());
-    if (cita && cita.cliente.telefono === telefono) {
+
+    // Buscar cita por radicado (normalizamos mayúsculas)
+    const rad = mensaje.trim().toUpperCase();
+    const cita = await citasService.buscarPorRadicado(rad);
+
+    if (cita) {
+      // Comparamos teléfonos tolerantes
+      if (!phonesMatch(cita.cliente?.telefono, telefono)) {
+        // No es la misma persona: informar y ofrecer volver al menú
+        await whatsappMessagesService.enviarMensaje(
+          telefono,
+          `El código ${rad} pertenece a otro número. Si crees que es un error, por favor contáctanos.`
+        );
+        await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.PUEDE_SERVIR_MAS());
+        await this.actualizarConversacion(conversacionId, 'INICIAL', {});
+        return;
+      }
+
       contexto.radicado = cita.radicado;
       contexto.citaId = cita.id;
-      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.CONFIRMAR_CANCELACION({
-        radicado: cita.radicado, servicio: cita.servicioNombre,
-        fecha: formatearFecha(cita.fechaHora), hora: formatearHora(cita.fechaHora.toTimeString().substring(0, 5)),
-      }));
+      await whatsappMessagesService.enviarMensaje(
+        telefono,
+        MENSAJES.CONFIRMAR_CANCELACION({
+          radicado: cita.radicado,
+          servicio: cita.servicioNombre,
+          fecha: formatearFecha(cita.fechaHora),
+          hora: formatearHora(cita.fechaHora.toTimeString().substring(0, 5)),
+        })
+      );
       await this.actualizarConversacion(conversacionId, 'ESPERANDO_CONFIRMACION_CANCELACION', contexto);
-    } else {
-      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.RADICADO_NO_ENCONTRADO());
+      return;
     }
+
+    // Si no se encontró la cita: avisar y ofrecer volver al menú principal
+    await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.RADICADO_NO_ENCONTRADO());
+    await whatsappMessagesService.enviarMensaje(telefono, 'Si deseas, puedes volver al menú principal ahora.');
+    await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.PUEDE_SERVIR_MAS());
+    await this.actualizarConversacion(conversacionId, 'INICIAL', {});
   }
 
-  private async manejarConfirmacionCancelacion(telefono: string, mensaje: string, contexto: ConversationContext, conversacionId: string) {
+  private async manejarConfirmacionCancelacion(
+    telefono: string,
+    mensaje: string,
+    contexto: ConversationContext,
+    conversacionId: string
+  ) {
     const normalizado = messageParser.normalizarRespuesta(mensaje);
     if (normalizado.includes('si') && normalizado.includes('cancelar')) {
       await citasService.cancelar(contexto.radicado!);
@@ -260,6 +367,7 @@ export class WhatsAppBotService {
     }
   }
 
+  // ---------- Conversaciones / DB ----------
   private async obtenerConversacionActiva(telefono: string) {
     return prisma.conversacion.findFirst({
       where: { telefono, activa: true },
@@ -279,6 +387,7 @@ export class WhatsAppBotService {
         estado: 'INICIAL',
         contexto: JSON.stringify({}),
         activa: true,
+        lastActivity: new Date(),
       },
       include: {
         cliente: true,
