@@ -7,7 +7,7 @@ export const whatsappConfig = {
 
 export const barberiaConfig = {
   nombre: process.env.BARBERIA_NOMBRE || 'Madison MVP Barbería',
-  direccion: process.env.BARBERIA_DIRECCION || '',
+  direccion: process.env.BARBERIA_DIRECCION || 'Acropolis, local 123',
   horaApertura: process.env.BARBERIA_HORA_APERTURA || '09:00',
   horaCierre: process.env.BARBERIA_HORA_CIERRE || '20:00',
   duracionServicioDefecto: 30, // minutos

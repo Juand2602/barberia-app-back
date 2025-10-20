@@ -1,7 +1,8 @@
+// src/services/whatsapp/templates.ts
 import { barberiaConfig } from '../../config/whatsapp';
 
 export const MENSAJES = {
-  BIENVENIDA: (nombreBarberia: string = barberiaConfig.nombre) => 
+  BIENVENIDA: (nombreBarberia: string = barberiaConfig.nombre) =>
     `💈 Hola, te saluda de ${nombreBarberia} es un gusto atenderte 💈
 
 ¿Necesitas información de...?
@@ -25,7 +26,7 @@ Por favor responda con una de las siguientes opciones:
 
   LISTA_PRECIOS: (servicios: Array<{ nombre: string; precio: number; descripcion?: string }>) => {
     let mensaje = `🧑🏾‍🦲 Todos nuestros servicios incluyen como obsequio una mascarilla para puntos negros:\n\n`;
-    
+
     servicios.forEach(servicio => {
       mensaje += `* ${servicio.nombre} ${formatearPrecio(servicio.precio)}`;
       if (servicio.descripcion) {
@@ -33,7 +34,7 @@ Por favor responda con una de las siguientes opciones:
       }
       mensaje += `\n\n`;
     });
-    
+
     return mensaje.trim();
   },
 
@@ -48,11 +49,11 @@ Por favor responda con una de las siguientes opciones:
   ELEGIR_BARBERO: (barberos: Array<{ id: string; nombre: string }>) => {
     let mensaje = `🧑🏾‍🦲 ¿Con cual de nuestros profesionales desea su cita?\n\nNuestros Profesionales\n\n`;
     mensaje += `🧑🏾‍🦲 Por favor envíeme de ésta lista el número que corresponde al profesional con el cual desea su cita\n\n`;
-    
+
     barberos.forEach((barbero, index) => {
       mensaje += `👉🏾 ${index + 1} ${barbero.nombre}\n`;
     });
-    
+
     mensaje += `\nEn caso que no sea ninguno de los anteriores por favor responda Ninguno`;
     return mensaje;
   },
@@ -79,14 +80,14 @@ Por favor responda con una de las siguientes opciones:
 
   HORARIOS_DISPONIBLES: (horarios: Array<{ numero: number; hora: string }>) => {
     let mensaje = `Tengo los siguientes turnos disponibles:\n\n`;
-    
+
     horarios.forEach(horario => {
       mensaje += `👉🏾 ${horario.numero}. ${horario.hora}\n\n`;
     });
-    
+
     mensaje += `🧑🏾‍🦲 Por favor envíeme el número del turno que desea.\n\n`;
     mensaje += `Si no desea ninguno de los turnos disponibles envíeme la palabra Cancelar`;
-    
+
     return mensaje;
   },
 
@@ -171,7 +172,7 @@ Intente de nuevo por favor`,
     `🧑🏾‍🦲 Lo siento, hubo un problema técnico. Por favor intente nuevamente en unos momentos.`,
 };
 
-// ==================== HELPERS ====================
+// HELPERS
 
 export const formatearPrecio = (precio: number): string => {
   return `${(precio / 1000).toLocaleString('es-CO')} mil pesos`;
@@ -187,9 +188,18 @@ export const formatearFecha = (fecha: Date): string => {
   return fecha.toLocaleDateString('es-CO', opciones);
 };
 
-export const formatearHora = (hora: string): string => {
-  const [hh, mm] = hora.split(':');
-  const horas = parseInt(hh);
+export const formatearHora = (horaOrDate: string | Date): string => {
+  // Si se pasa Date, lo formateamos a HH:mm y luego a AM/PM
+  if (typeof horaOrDate !== 'string') {
+    const hh = horaOrDate.getHours();
+    const mm = horaOrDate.getMinutes().toString().padStart(2, '0');
+    const periodo = hh >= 12 ? 'PM' : 'AM';
+    const horas12 = hh % 12 || 12;
+    return `${horas12}:${mm} ${periodo}`;
+  }
+
+  const [hhStr, mm] = horaOrDate.split(':');
+  const horas = parseInt(hhStr, 10);
   const periodo = horas >= 12 ? 'PM' : 'AM';
   const horas12 = horas % 12 || 12;
   return `${horas12}:${mm} ${periodo}`;
