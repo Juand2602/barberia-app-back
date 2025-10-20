@@ -21,21 +21,19 @@ export class WhatsAppBotService {
     try {
       // Obtener o crear conversación
       let conversacion = await this.obtenerConversacionActiva(telefono);
-      
+
       if (!conversacion) {
-        // Crear conversación si no existe
         conversacion = await this.crearConversacion(telefono);
         await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.BIENVENIDA());
         return;
       }
 
-      // Si por alguna razón no tiene cliente incluido, reiniciamos la conversación
       if (!conversacion.cliente) {
-          console.error(`Conversación ${conversacion.id} sin cliente asociado. Reiniciando.`);
-          await this.finalizarConversacion(conversacion.id);
-          const nuevaConversacion = await this.crearConversacion(telefono);
-          await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.BIENVENIDA());
-          return;
+        console.error(`Conversación ${conversacion.id} sin cliente asociado. Reiniciando.`);
+        await this.finalizarConversacion(conversacion.id);
+        const nuevaConversacion = await this.crearConversacion(telefono);
+        await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.BIENVENIDA());
+        return;
       }
 
       // Actualizar última actividad
@@ -87,7 +85,31 @@ export class WhatsAppBotService {
     }
   }
 
+  /**
+   * Maneja el estado inicial.
+   *
+   * Cambios principales:
+   *  - Si el usuario responde "sí" o "si" (afirmativo) -> mostramos el menú/principal de nuevo.
+   *  - Si el usuario responde "no" (negativo) -> despedimos y finalizamos conversación.
+   *  - Si no es yes/no, seguimos intentando parsear la opción numérica (1..4).
+   */
   private async manejarInicial(telefono: string, mensaje: string, contexto: ConversationContext, conversacionId: string) {
+    // Primero detectamos respuestas afirmativas / negativas (p. ej. tras MENSAJES.PUEDE_SERVIR_MAS())
+    if (messageParser.esAfirmativo(mensaje)) {
+      // El usuario quiere que lo ayude nuevamente -> enviamos el menú principal
+      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.BIENVENIDA());
+      await this.actualizarConversacion(conversacionId, 'INICIAL', contexto);
+      return;
+    }
+
+    if (messageParser.esNegativo(mensaje)) {
+      // El usuario no necesita más ayuda -> despedida y finalizamos
+      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.DESPEDIDA());
+      await this.finalizarConversacion(conversacionId);
+      return;
+    }
+
+    // Si no es sí/no, intentamos parsear opción numérica
     const opcion = messageParser.parsearOpcionNumerica(mensaje, 4);
     if (opcion === 1) {
       await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.UBICACION());
