@@ -1,5 +1,14 @@
 // src/services/whatsapp/templates.ts
-import { barberiaConfig } from '../../config/whatsapp';
+import { barberiaConfig as barberCfg } from '../../config/whatsapp';
+
+export const barberiaConfig = {
+  nombre: barberCfg.nombre,
+  direccion: barberCfg.direccion,
+  horaApertura: barberCfg.horaApertura,
+  horaCierre: barberCfg.horaCierre,
+  duracionServicioDefecto: barberCfg.duracionServicioDefecto,
+  timezone: process.env.BARBERIA_TIMEZONE || 'America/Bogota', // nueva opción
+};
 
 export const MENSAJES = {
   BIENVENIDA: (nombreBarberia: string = barberiaConfig.nombre) =>
@@ -183,21 +192,25 @@ export const formatearFecha = (fecha: Date): string => {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
-    day: 'numeric'
+    day: 'numeric',
+    timeZone: barberiaConfig.timezone,
   };
   return fecha.toLocaleDateString('es-CO', opciones);
 };
 
 export const formatearHora = (horaOrDate: string | Date): string => {
-  // Si se pasa Date, lo formateamos a HH:mm y luego a AM/PM
+  // Si se pasa Date, lo formateamos con Intl usando la timezone de la barbería
   if (typeof horaOrDate !== 'string') {
-    const hh = horaOrDate.getHours();
-    const mm = horaOrDate.getMinutes().toString().padStart(2, '0');
-    const periodo = hh >= 12 ? 'PM' : 'AM';
-    const horas12 = hh % 12 || 12;
-    return `${horas12}:${mm} ${periodo}`;
+    const opciones: Intl.DateTimeFormatOptions = {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: barberiaConfig.timezone,
+    };
+    return new Intl.DateTimeFormat('es-CO', opciones).format(horaOrDate);
   }
 
+  // Si llega "HH:mm" como string, convertimos a número y formateamos manualmente en 12h
   const [hhStr, mm] = horaOrDate.split(':');
   const horas = parseInt(hhStr, 10);
   const periodo = horas >= 12 ? 'PM' : 'AM';
