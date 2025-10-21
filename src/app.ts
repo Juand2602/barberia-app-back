@@ -3,6 +3,9 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import cron from 'node-cron';
 
+// Configurar zona horaria
+process.env.TZ = 'America/Bogota'; // O tu zona horaria local
+
 // Routes
 import webhookRoutes from './routes/webhook.routes';
 import citasRoutes from './routes/citas.routes';

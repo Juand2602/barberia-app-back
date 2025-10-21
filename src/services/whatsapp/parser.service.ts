@@ -1,4 +1,5 @@
-// src/services/whatsapp/parser.service.ts
+import { barberiaConfig } from '../../config/whatsapp';
+
 export class MessageParserService {
   parsearFecha(texto: string): Date | null {
     const hoy = new Date();
@@ -6,7 +7,6 @@ export class MessageParserService {
     
     const textoLower = texto.toLowerCase().trim();
     
-    // Casos especiales
     if (textoLower === 'hoy') {
       return hoy;
     }
@@ -87,12 +87,18 @@ export class MessageParserService {
 
   esAfirmativo(texto: string): boolean {
     const normalizado = this.normalizarRespuesta(texto);
-    return ['si', 'sí', 'yes', 'ok', '1', 'cierto', 'claro', 'de acuerdo'].includes(normalizado);
+    // Detectar "si" incluso si está en una frase más larga
+    return ['si', 'sí', 'yes', 'ok', '1', 'cierto', 'claro', 'de acuerdo'].some(afirmacion => 
+      normalizado.includes(afirmacion)
+    );
   }
 
   esNegativo(texto: string): boolean {
     const normalizado = this.normalizarRespuesta(texto);
-    return ['no', '2', 'nop', 'nope', 'negativo'].includes(normalizado);
+    // Detectar "no" incluso si está en una frase más larga
+    return ['no', '2', 'nop', 'nope', 'negativo'].some(negacion => 
+      normalizado.includes(negacion)
+    );
   }
 
   esComandoCancelacion(texto: string): boolean {

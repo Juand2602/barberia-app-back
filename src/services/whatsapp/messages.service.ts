@@ -1,4 +1,3 @@
-// src/services/whatsapp/messages.service.ts
 import axios, { AxiosError, AxiosResponse } from 'axios';
 import { whatsappConfig } from '../../config/whatsapp';
 

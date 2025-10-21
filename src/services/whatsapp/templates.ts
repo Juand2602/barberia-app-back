@@ -1,4 +1,3 @@
-// src/services/whatsapp/templates.ts
 import { barberiaConfig } from '../../config/whatsapp';
 
 export const MENSAJES = {
@@ -206,13 +205,18 @@ export const formatearPrecio = (precio: number): string => {
 };
 
 export const formatearFecha = (fecha: Date): string => {
+  // Asegurarnos de que estamos usando la zona horaria local
+  const fechaLocal = new Date(fecha);
+  
   const opciones: Intl.DateTimeFormatOptions = {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
-    day: 'numeric'
+    day: 'numeric',
+    timeZone: 'America/Bogota' // O tu zona horaria local
   };
-  return fecha.toLocaleDateString('es-CO', opciones);
+  
+  return fechaLocal.toLocaleDateString('es-CO', opciones);
 };
 
 export const formatearHora = (hora: string): string => {
