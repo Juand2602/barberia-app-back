@@ -1,17 +1,8 @@
 // src/services/whatsapp/templates.ts
-import { barberiaConfig as barberCfg } from '../../config/whatsapp';
-
-export const barberiaConfig = {
-  nombre: barberCfg.nombre,
-  direccion: barberCfg.direccion,
-  horaApertura: barberCfg.horaApertura,
-  horaCierre: barberCfg.horaCierre,
-  duracionServicioDefecto: barberCfg.duracionServicioDefecto,
-  timezone: process.env.BARBERIA_TIMEZONE || 'America/Bogota', // nueva opción
-};
+import { barberiaConfig } from '../../config/whatsapp';
 
 export const MENSAJES = {
-  BIENVENIDA: (nombreBarberia: string = barberiaConfig.nombre) =>
+  BIENVENIDA: (nombreBarberia: string = barberiaConfig.nombre) => 
     `💈 Hola, te saluda de ${nombreBarberia} es un gusto atenderte 💈
 
 ¿Necesitas información de...?
@@ -21,7 +12,9 @@ Por favor responda con una de las siguientes opciones:
 1️⃣ Dónde estamos
 2️⃣ Lista de precios
 3️⃣ Agendar una cita
-4️⃣ Cancelar una cita`,
+4️⃣ Cancelar una cita
+
+Escribe "cancelar" en cualquier momento para salir del proceso.`,
 
   UBICACION: (direccion: string = barberiaConfig.direccion) =>
     `🧑🏾‍🦲 Estamos ubicados en ${direccion}
@@ -35,7 +28,7 @@ Por favor responda con una de las siguientes opciones:
 
   LISTA_PRECIOS: (servicios: Array<{ nombre: string; precio: number; descripcion?: string }>) => {
     let mensaje = `🧑🏾‍🦲 Todos nuestros servicios incluyen como obsequio una mascarilla para puntos negros:\n\n`;
-
+    
     servicios.forEach(servicio => {
       mensaje += `* ${servicio.nombre} ${formatearPrecio(servicio.precio)}`;
       if (servicio.descripcion) {
@@ -43,7 +36,7 @@ Por favor responda con una de las siguientes opciones:
       }
       mensaje += `\n\n`;
     });
-
+    
     return mensaje.trim();
   },
 
@@ -58,22 +51,28 @@ Por favor responda con una de las siguientes opciones:
   ELEGIR_BARBERO: (barberos: Array<{ id: string; nombre: string }>) => {
     let mensaje = `🧑🏾‍🦲 ¿Con cual de nuestros profesionales desea su cita?\n\nNuestros Profesionales\n\n`;
     mensaje += `🧑🏾‍🦲 Por favor envíeme de ésta lista el número que corresponde al profesional con el cual desea su cita\n\n`;
-
+    
     barberos.forEach((barbero, index) => {
       mensaje += `👉🏾 ${index + 1} ${barbero.nombre}\n`;
     });
-
+    
     mensaje += `\nEn caso que no sea ninguno de los anteriores por favor responda Ninguno`;
+    mensaje += `\n\nEscribe "cancelar" en cualquier momento para salir del proceso.`;
+    
     return mensaje;
   },
 
   SOLICITAR_NOMBRE_COMPLETO: () =>
-    `🧑🏾‍🦲 ¿Podría indicarme su nombre completo por favor?`,
+    `🧑🏾‍🦲 ¿Podría indicarme su nombre completo por favor?
+
+Escribe "cancelar" en cualquier momento para salir del proceso.`,
 
   NOMBRE_INVALIDO: () =>
     `🧑🏾‍🦲 Por favor lea con atención y responda correctamente
 
-Intente de nuevo por favor`,
+Intente de nuevo por favor
+
+Escribe "cancelar" en cualquier momento para salir del proceso.`,
 
   SOLICITAR_FECHA: () =>
     `🧑🏾‍🦲 ¿Para cuando desea su cita?
@@ -82,21 +81,25 @@ Por favor responda con una de las siguientes opciones:
 
 👉🏾 Hoy
 👉🏾 Mañana
-👉🏾 Pasado mañana`,
+👉🏾 Pasado mañana
+
+También puede escribir una fecha específica (ej: 25/12/2023) o un día de la semana (ej: viernes)
+
+Escribe "cancelar" en cualquier momento para salir del proceso.`,
 
   CONSULTANDO_AGENDA: () =>
     `🧑🏾‍🦲 Un momento por favor, voy a consultar la agenda...`,
 
   HORARIOS_DISPONIBLES: (horarios: Array<{ numero: number; hora: string }>) => {
     let mensaje = `Tengo los siguientes turnos disponibles:\n\n`;
-
+    
     horarios.forEach(horario => {
       mensaje += `👉🏾 ${horario.numero}. ${horario.hora}\n\n`;
     });
-
+    
     mensaje += `🧑🏾‍🦲 Por favor envíeme el número del turno que desea.\n\n`;
     mensaje += `Si no desea ninguno de los turnos disponibles envíeme la palabra Cancelar`;
-
+    
     return mensaje;
   },
 
@@ -106,7 +109,9 @@ Por favor responda con una de las siguientes opciones:
 ¿Desea intentar con otra fecha?
 
 👉🏾 Si
-👉🏾 No`,
+👉🏾 No
+
+Escribe "cancelar" en cualquier momento para salir del proceso.`,
 
   CITA_CONFIRMADA: (datos: {
     radicado: string;
@@ -133,18 +138,26 @@ Por favor responda con una de las siguientes opciones:
 Por favor responda con una de las siguientes opciones:
 
 👉🏾 Sí
-👉🏾 No`,
+👉🏾 No
+
+Escribe "cancelar" en cualquier momento para salir del proceso.`,
 
   SIN_RADICADO: () =>
     `🧑🏾‍🦲 Desafortunadamente no podemos cancelar una cita si no se tiene su radicado`,
 
   SOLICITAR_CODIGO_RADICADO: () =>
-    `🧑🏾‍🦲 Por favor envíeme el código de radicado de su cita`,
+    `🧑🏾‍🦲 Por favor envíeme el código de radicado de su cita
+
+Ejemplo: RAD-20231225-ABCD
+
+Escribe "cancelar" en cualquier momento para salir del proceso.`,
 
   RADICADO_NO_ENCONTRADO: () =>
     `🧑🏾‍🦲 No encontramos ninguna cita con ese código de radicado
 
-Por favor verifique e intente nuevamente`,
+Por favor verifique e intente nuevamente
+
+Escribe "cancelar" en cualquier momento para salir del proceso.`,
 
   CONFIRMAR_CANCELACION: (datos: {
     radicado: string;
@@ -162,7 +175,9 @@ Por favor verifique e intente nuevamente`,
 Por favor responda:
 
 👉🏾 Sí, cancelar
-👉🏾 No, conservar`,
+👉🏾 No, conservar
+
+Escribe "cancelar" en cualquier momento para salir del proceso.`,
 
   CITA_CANCELADA: () =>
     `✅ Su cita ha sido cancelada exitosamente
@@ -179,9 +194,12 @@ Intente de nuevo por favor`,
 
   ERROR_SERVIDOR: () =>
     `🧑🏾‍🦲 Lo siento, hubo un problema técnico. Por favor intente nuevamente en unos momentos.`,
+
+  CANCELACION_CONFIRMADA: () =>
+    `🧑🏾‍🦲 Proceso cancelado. Si necesita ayuda en el futuro, no dude en contactarnos.`,
 };
 
-// HELPERS
+// ==================== HELPERS ====================
 
 export const formatearPrecio = (precio: number): string => {
   return `${(precio / 1000).toLocaleString('es-CO')} mil pesos`;
@@ -192,27 +210,14 @@ export const formatearFecha = (fecha: Date): string => {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
-    day: 'numeric',
-    timeZone: barberiaConfig.timezone,
+    day: 'numeric'
   };
   return fecha.toLocaleDateString('es-CO', opciones);
 };
 
-export const formatearHora = (horaOrDate: string | Date): string => {
-  // Si se pasa Date, lo formateamos con Intl usando la timezone de la barbería
-  if (typeof horaOrDate !== 'string') {
-    const opciones: Intl.DateTimeFormatOptions = {
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true,
-      timeZone: barberiaConfig.timezone,
-    };
-    return new Intl.DateTimeFormat('es-CO', opciones).format(horaOrDate);
-  }
-
-  // Si llega "HH:mm" como string, convertimos a número y formateamos manualmente en 12h
-  const [hhStr, mm] = horaOrDate.split(':');
-  const horas = parseInt(hhStr, 10);
+export const formatearHora = (hora: string): string => {
+  const [hh, mm] = hora.split(':');
+  const horas = parseInt(hh);
   const periodo = horas >= 12 ? 'PM' : 'AM';
   const horas12 = horas % 12 || 12;
   return `${horas12}:${mm} ${periodo}`;
