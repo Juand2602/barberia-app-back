@@ -106,14 +106,14 @@ export class MessageParserService {
 
   extraerRadicado(texto: string): string | null {
     // Buscar patrones como RAD-YYYYMMDD-XXXX
-    const radicadoRegex = /rad-(\d{8})-[a-z0-9]{4}/i;
+    const radicadoRegex = /rad[-\s]?(\d{8})[-\s]?([a-z0-9]{4})/i;
     const match = texto.match(radicadoRegex);
     
     if (match) {
-      return match[0].toUpperCase();
+      return `RAD-${match[1]}-${match[2]}`.toUpperCase();
     }
     
-    // Si no encuentra el patrón completo, buscar cualquier combinación que parezca un radicado
+    // Si no encuentra el patrón, buscar cualquier texto que contenga "RAD" seguido de números y letras
     const textoNormalizado = texto.toUpperCase().trim();
     
     // Verificar si el texto parece ser un radicado (empieza con RAD y tiene formato similar)
@@ -127,6 +127,14 @@ export class MessageParserService {
     
     if (matchParcial) {
       return `RAD-${matchParcial[1]}-${matchParcial[2]}`.toUpperCase();
+    }
+    
+    // Intentar extraer cualquier secuencia que parezca un radicado
+    const secuenciaRegex = /([A-Z]{3})[-\s]?(\d{8})[-\s]?([A-Z0-9]{4})/i;
+    const matchSecuencia = texto.match(secuenciaRegex);
+    
+    if (matchSecuencia) {
+      return `${matchSecuencia[1]}-${matchSecuencia[2]}-${matchSecuencia[3]}`.toUpperCase();
     }
     
     return null;

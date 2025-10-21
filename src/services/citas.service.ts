@@ -407,57 +407,46 @@ export class CitasService {
    * Verifica si ya existe una cita para un empleado en un horario específico.
    * Usado por el bot de WhatsApp.
    */
-  async verificarCitaExistente(empleadoId: string, fechaHora: Date, duracionMinutos: number) {
-    const finServicio = new Date(fechaHora.getTime() + duracionMinutos * 60000);
-    
-    const citasConflicto = await prisma.cita.findFirst({
-      where: {
-        empleadoId,
-        estado: { in: ['PENDIENTE', 'CONFIRMADA'] },
-        OR: [
-          // Cita existente que comienza durante el nuevo servicio
-          { 
-            fechaHora: { 
-              gte: fechaHora, 
-              lt: finServicio 
-            } 
-          },
-          // Cita existente que termina durante el nuevo servicio
-          { 
-            AND: [
-              { fechaHora: { lt: fechaHora } },
-              // La cita existente termina después de que comience la nueva cita
-              { 
-                fechaHora: { 
-                  gte: new Date(fechaHora.getTime() - 60 * 60000) // Asumiendo duración máxima de 60 minutos
-                } 
-              }
-            ]
-          },
-          // Nuevo caso: La nueva cita comienza durante una cita existente
-          {
-            AND: [
-              { fechaHora: { gt: fechaHora } },
-              { fechaHora: { lt: finServicio } }
-            ]
-          },
-          // Nuevo caso: La nueva cita termina durante una cita existente
-          {
-            AND: [
-              { fechaHora: { lt: finServicio } },
-              { 
-                fechaHora: { 
-                  gte: new Date(finServicio.getTime() - 60 * 60000) // Asumiendo duración máxima de 60 minutos
-                } 
-              }
-            ]
-          }
-        ],
+/**
+ * Verifica si ya existe una cita para un empleado en un horario específico.
+ * Usado por el bot de WhatsApp.
+ */
+async verificarCitaExistente(empleadoId: string, fechaHora: Date, duracionMinutos: number) {
+  const finServicio = new Date(fechaHora.getTime() + duracionMinutos * 60000);
+  
+  // Obtener todas las citas del empleado para ese día
+  const inicioDia = new Date(fechaHora);
+  inicioDia.setHours(0, 0, 0, 0);
+  
+  const finDia = new Date(fechaHora);
+  finDia.setHours(23, 59, 59, 999);
+  
+  const citasDelDia = await prisma.cita.findMany({
+    where: {
+      empleadoId,
+      estado: { in: ['PENDIENTE', 'CONFIRMADA'] },
+      fechaHora: {
+        gte: inicioDia,
+        lte: finDia,
       },
-    });
+    },
+  });
+  
+  // Verificar si alguna de las citas existentes se solapa con la nueva cita
+  for (const citaExistente of citasDelDia) {
+    const finCitaExistente = new Date(citaExistente.fechaHora.getTime() + citaExistente.duracionMinutos * 60000);
     
-    return citasConflicto;
+    // Si la nueva cita comienza antes de que termine la cita existente
+    // Y la nueva cita termina después de que comience la cita existente
+    if (
+      (fechaHora < finCitaExistente && finServicio > citaExistente.fechaHora)
+    ) {
+      return citaExistente;
+    }
   }
+  
+  return null;
+}
 
   // Verificar disponibilidad para actualizar (excluyendo la cita actual)
   private async verificarDisponibilidadParaActualizar(

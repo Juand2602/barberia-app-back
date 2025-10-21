@@ -360,6 +360,38 @@ private async manejarRadicado(telefono: string, mensaje: string, contexto: Conve
     }
   }
   
+  // Si todavía no se encuentra, intentar buscar en la base de datos con una búsqueda más flexible
+  if (!radicado) {
+    try {
+      // Buscar citas por teléfono que coincidan parcialmente con el mensaje
+      const citasCliente = await prisma.cita.findMany({
+        where: {
+          cliente: {
+            telefono: telefono
+          },
+          estado: { in: ['PENDIENTE', 'CONFIRMADA'] }
+        },
+        include: {
+          cliente: true,
+          empleado: true,
+        },
+        orderBy: { fechaHora: 'desc' },
+        take: 5 // Limitar a las 5 citas más recientes
+      });
+      
+      // Verificar si alguna de las citas coincide con el mensaje
+      for (const cita of citasCliente) {
+        if (mensaje.toUpperCase().includes(cita.radicado) || 
+            cita.radicado.includes(mensaje.toUpperCase())) {
+          radicado = cita.radicado;
+          break;
+        }
+      }
+    } catch (error) {
+      console.error('Error buscando citas del cliente:', error);
+    }
+  }
+  
   if (!radicado) {
     await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.RADICADO_NO_ENCONTRADO());
     return;
