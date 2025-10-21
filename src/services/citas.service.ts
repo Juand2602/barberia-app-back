@@ -362,46 +362,79 @@ export class CitasService {
    * Calcula los horarios disponibles para un empleado en una fecha.
    * Usado por el bot de WhatsApp.
    */
-  async calcularHorariosDisponibles(empleadoId: string, fecha: Date, duracionMinutos: number = 30) {
-    const citasExistentes = await this.getByFecha(fecha, empleadoId).then(citas => 
-        citas.filter(c => ['PENDIENTE', 'CONFIRMADA'].includes(c.estado))
+ /**
+ * Calcula los horarios disponibles para un empleado en una fecha.
+ * Excluye cualquier slot que se solape con citas existentes (toma en cuenta la duración de cada cita).
+ */
+async calcularHorariosDisponibles(empleadoId: string, fecha: Date, duracionMinutos: number = 30) {
+  const citasExistentes = await this.getByFecha(fecha, empleadoId).then(citas =>
+    citas.filter(c => ['PENDIENTE', 'CONFIRMADA'].includes(c.estado))
+  );
+
+  const empleado = await empleadosService.getById(empleadoId);
+  if (!empleado) return [];
+
+  const diaSemana = fecha.getDay();
+  const diasMap: any = {
+    0: 'horarioDomingo', 1: 'horarioLunes', 2: 'horarioMartes',
+    3: 'horarioMiercoles', 4: 'horarioJueves', 5: 'horarioViernes', 6: 'horarioSabado',
+  };
+
+  const horarioDia = (empleado as any)[diasMap[diaSemana]];
+  if (!horarioDia) return [];
+
+  const [horaInicio, minInicio] = horarioDia.inicio.split(':').map(Number);
+  const [horaFin, minFin] = horarioDia.fin.split(':').map(Number);
+
+  const slots: string[] = [];
+
+  // Base date para la fecha dada, con la hora de inicio/fin ajustadas
+  const fechaBase = new Date(fecha);
+  fechaBase.setHours(0, 0, 0, 0);
+
+  let minutoActual = horaInicio * 60 + minInicio;
+  const minutoFinTotal = horaFin * 60 + minFin;
+
+  while (minutoActual + duracionMinutos <= minutoFinTotal) {
+    const h = Math.floor(minutoActual / 60);
+    const m = minutoActual % 60;
+
+    // Construir Date objects para comparar intervalos
+    const slotStart = new Date(
+      fechaBase.getFullYear(),
+      fechaBase.getMonth(),
+      fechaBase.getDate(),
+      h,
+      m,
+      0,
+      0
     );
-    
-    const empleado = await empleadosService.getById(empleadoId);
-    if (!empleado) return [];
+    const slotEnd = new Date(slotStart.getTime() + duracionMinutos * 60000);
 
-    const diaSemana = fecha.getDay();
-    const diasMap: any = {
-      0: 'horarioDomingo', 1: 'horarioLunes', 2: 'horarioMartes',
-      3: 'horarioMiercoles', 4: 'horarioJueves', 5: 'horarioViernes', 6: 'horarioSabado',
-    };
+    // Comprobar solapamiento con cualquier cita existente
+    let solapa = false;
+    for (const cita of citasExistentes) {
+      const citaStart = new Date(cita.fechaHora);
+      const citaEnd = new Date(cita.fechaHora.getTime() + (cita.duracionMinutos || 30) * 60000);
 
-    const horarioDia = (empleado as any)[diasMap[diaSemana]];
-    if (!horarioDia) return [];
-
-    const [horaInicio, minInicio] = horarioDia.inicio.split(':').map(Number);
-    const [horaFin, minFin] = horarioDia.fin.split(':').map(Number);
-
-    const slots: string[] = [];
-    let horaActual = horaInicio * 60 + minInicio;
-    const horaFinTotal = horaFin * 60 + minFin;
-
-    while (horaActual + duracionMinutos <= horaFinTotal) {
-        const h = Math.floor(horaActual / 60);
-        const m = horaActual % 60;
-        const horaStr = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
-        slots.push(horaStr);
-        horaActual += duracionMinutos;
+      // overlap if slotStart < citaEnd && slotEnd > citaStart
+      if (slotStart < citaEnd && slotEnd > citaStart) {
+        solapa = true;
+        break;
+      }
     }
 
-    const ocupados = new Set(citasExistentes.map(c => {
-        const h = c.fechaHora.getHours();
-        const m = c.fechaHora.getMinutes();
-        return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
-    }));
+    if (!solapa) {
+      const horaStr = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+      slots.push(horaStr);
+    }
 
-    return slots.filter(slot => !ocupados.has(slot));
+    minutoActual += duracionMinutos;
   }
+
+  return slots;
+}
+
 
   /**
    * Verifica si ya existe una cita para un empleado en un horario específico.
@@ -449,32 +482,48 @@ async verificarCitaExistente(empleadoId: string, fechaHora: Date, duracionMinuto
 }
 
   // Verificar disponibilidad para actualizar (excluyendo la cita actual)
-  private async verificarDisponibilidadParaActualizar(
-    citaId: string,
-    empleadoId: string,
-    fecha: Date,
-    duracionMinutos: number
-  ) {
-    const finServicio = new Date(fecha.getTime() + duracionMinutos * 60000);
+// Verificar disponibilidad para actualizar (excluyendo la cita actual)
+private async verificarDisponibilidadParaActualizar(
+  citaId: string,
+  empleadoId: string,
+  fecha: Date,
+  duracionMinutos: number
+) {
+  const finServicio = new Date(fecha.getTime() + duracionMinutos * 60000);
 
-    const citasConflicto = await prisma.cita.count({
-      where: {
-        empleadoId,
-        id: { not: citaId }, // Excluir la cita actual
-        estado: { in: ['PENDIENTE', 'CONFIRMADA'] },
-        OR: [
-          { fechaHora: { lt: fecha, gte: new Date(fecha.getTime() - 2 * 60 * 60000) } },
-          { fechaHora: { gte: fecha, lt: finServicio } },
-        ],
+  // Obtener todas las citas del empleado ese día (excluyendo la cita actual)
+  const inicioDia = new Date(fecha);
+  inicioDia.setHours(0, 0, 0, 0);
+
+  const finDia = new Date(fecha);
+  finDia.setHours(23, 59, 59, 999);
+
+  const citasDelDia = await prisma.cita.findMany({
+    where: {
+      empleadoId,
+      id: { not: citaId },
+      estado: { in: ['PENDIENTE', 'CONFIRMADA'] },
+      fechaHora: {
+        gte: inicioDia,
+        lte: finDia,
       },
-    });
+    },
+  });
 
-    if (citasConflicto > 0) {
+  for (const citaExistente of citasDelDia) {
+    const inicioExistente = new Date(citaExistente.fechaHora);
+    const finExistente = new Date(inicioExistente.getTime() + (citaExistente.duracionMinutos || 30) * 60000);
+
+    // Si la nueva cita comienza antes de que termine la cita existente
+    // y la nueva cita termina después de que comience la cita existente -> solapan
+    if (fecha < finExistente && finServicio > inicioExistente) {
       return { disponible: false, motivo: 'Ya tiene una cita agendada en ese horario' };
     }
-
-    return { disponible: true };
   }
+
+  return { disponible: true };
+}
+
 }
 
 export const citasService = new CitasService();
