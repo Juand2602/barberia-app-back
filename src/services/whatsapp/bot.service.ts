@@ -106,26 +106,13 @@ export class WhatsAppBotService {
     contexto: ConversationContext,
     conversacionId: string
   ) {
-    // Si el usuario responde afirmativo o negativo después de un PUEDE_SERVIR_MAS / UBICACION
-    if (messageParser.esAfirmativo(mensaje)) {
-      // Volver a mostrar el menú principal
-      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.BIENVENIDA());
-      await this.actualizarConversacion(conversacionId, 'INICIAL', {});
-      return;
-    }
-    if (messageParser.esNegativo(mensaje)) {
-      // Despedida y finalizar conversación
-      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.DESPEDIDA());
-      await this.finalizarConversacion(conversacionId);
-      return;
-    }
-
-    // Si no es Si/No, intentamos parsear una opción numérica del menú (1..4)
+    // Primero intentamos parsear una opción numérica del menú (1..4)
     const opcion = messageParser.parsearOpcionNumerica(mensaje, 4);
     if (opcion === 1) {
       await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.UBICACION());
       // Pedimos Si/No; dejamos estado INICIAL para que la comprobación esAfirmativo/esNegativo al inicio actúe.
       await this.actualizarConversacion(conversacionId, 'INICIAL', contexto);
+      return;
     } else if (opcion === 2) {
       const servicios = await serviciosService.listarActivos();
       // Convertir descripcion null -> undefined para que coincida con la firma esperada
@@ -140,19 +127,37 @@ export class WhatsAppBotService {
       );
       await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.PUEDE_SERVIR_MAS());
       await this.actualizarConversacion(conversacionId, 'INICIAL', contexto);
+      return;
     } else if (opcion === 3) {
       const barberos = await empleadosService.getAll(true);
       await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.ELEGIR_BARBERO(barberos));
       await this.actualizarConversacion(conversacionId, 'ESPERANDO_BARBERO', contexto);
+      return;
     } else if (opcion === 4) {
       await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.SOLICITAR_RADICADO());
       await this.actualizarConversacion(conversacionId, 'ESPERANDO_RADICADO', {
         ...contexto,
         flujo: 'cancelacion',
       });
-    } else {
-      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.OPCION_INVALIDA());
+      return;
     }
+
+    // Si no es una opción numérica (1..4), entonces chequeamos si es Si/No para respuestas de PUEDE_SERVIR_MAS / UBICACION
+    if (messageParser.esAfirmativo(mensaje)) {
+      // Volver a mostrar el menú principal
+      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.BIENVENIDA());
+      await this.actualizarConversacion(conversacionId, 'INICIAL', {});
+      return;
+    }
+    if (messageParser.esNegativo(mensaje)) {
+      // Despedida y finalizar conversación
+      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.DESPEDIDA());
+      await this.finalizarConversacion(conversacionId);
+      return;
+    }
+
+    // Si llegamos aquí, no fue ni número válido ni Si/No — mensaje de opción inválida
+    await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.OPCION_INVALIDA());
   }
 
   private async manejarSeleccionBarbero(

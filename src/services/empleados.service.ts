@@ -1,6 +1,9 @@
+// src/services/empleados.service.ts (Nuevo Backend - CORREGIDO)
+
 import prisma from '../config/database';
 
 export class EmpleadosService {
+  // Obtener todos los empleados
   async getAll(activo?: boolean) {
     const where: any = {};
     if (activo !== undefined) {
@@ -20,9 +23,10 @@ export class EmpleadosService {
       },
     });
 
+    // 🔥 CLAVE: Parsear especialidades y horarios para que el frontend reciba objetos/arrays
     return empleados.map(emp => ({
       ...emp,
-      especialidades: JSON.parse(emp.especialidades || '[]'),
+      especialidades: JSON.parse(emp.especialidades || '[]'), // Asume '[]' si es null o vacío
       horarioLunes: emp.horarioLunes ? JSON.parse(emp.horarioLunes) : null,
       horarioMartes: emp.horarioMartes ? JSON.parse(emp.horarioMartes) : null,
       horarioMiercoles: emp.horarioMiercoles ? JSON.parse(emp.horarioMiercoles) : null,
@@ -33,6 +37,7 @@ export class EmpleadosService {
     }));
   }
 
+  // Obtener un empleado por ID
   async getById(id: string) {
     const empleado = await prisma.empleado.findUnique({
       where: { id },
@@ -57,6 +62,7 @@ export class EmpleadosService {
       throw new Error('Empleado no encontrado');
     }
 
+    // 🔥 CLAVE: Parsear JSON para la respuesta individual
     return {
       ...empleado,
       especialidades: JSON.parse(empleado.especialidades || '[]'),
@@ -70,7 +76,9 @@ export class EmpleadosService {
     };
   }
 
+  // Crear un nuevo empleado
   async create(data: any) {
+    // 1. Validaciones
     if (!data.nombre || typeof data.nombre !== 'string' || data.nombre.trim() === '') {
       throw new Error('El nombre del empleado es obligatorio y no puede estar vacío.');
     }
@@ -87,10 +95,12 @@ export class EmpleadosService {
     const existentePorTelefono = await prisma.empleado.findFirst({ where: { telefono: telefonoNormalizado } });
     if (existentePorTelefono) throw new Error('Ya existe un empleado con ese número de teléfono.');
 
+    // 2. Crear el empleado
     const empleado = await prisma.empleado.create({
       data: {
         nombre: nombreNormalizado,
         telefono: telefonoNormalizado,
+        // 🔥 CLAVE: Guardar los arrays/objetos como strings JSON
         especialidades: JSON.stringify(data.especialidades || []),
         horarioLunes: data.horarioLunes ? JSON.stringify(data.horarioLunes) : null,
         horarioMartes: data.horarioMartes ? JSON.stringify(data.horarioMartes) : null,
@@ -105,7 +115,9 @@ export class EmpleadosService {
     return empleado;
   }
 
+  // Actualizar un empleado
   async update(id: string, data: any) {
+    // Validaciones si se proporcionan los datos
     if (data.nombre !== undefined) {
       if (!data.nombre || typeof data.nombre !== 'string' || data.nombre.trim() === '') {
         throw new Error('El nombre, si se proporciona, no puede estar vacío.');
@@ -121,6 +133,7 @@ export class EmpleadosService {
       if (existente) throw new Error('Ya existe otro empleado con ese teléfono.');
     }
     
+    // Preparar datos para la actualización
     const updateData: any = {};
     if (data.nombre !== undefined) updateData.nombre = data.nombre.trim();
     if (data.telefono !== undefined) updateData.telefono = data.telefono.trim();
@@ -142,6 +155,7 @@ export class EmpleadosService {
     return empleado;
   }
 
+  // Eliminar un empleado (soft delete)
   async delete(id: string) {
     const empleado = await prisma.empleado.update({
       where: { id },
@@ -150,6 +164,7 @@ export class EmpleadosService {
     return empleado;
   }
 
+  // Obtener estadísticas de un empleado
   async getEstadisticas(id: string) {
     const [totalCitas, totalIngresos] = await Promise.all([
       prisma.cita.count({
@@ -167,9 +182,9 @@ export class EmpleadosService {
     };
   }
 
-  // 🔥 CORREGIDO: Lógica de verificación de disponibilidad
-  async verificarDisponibilidad(empleadoId: string, fecha: Date, duracionMinutos: number) {
-    const diaSemana = fecha.getDay();
+   
+   async verificarDisponibilidad(empleadoId: string, fecha: Date, duracionMinutos: number) {
+    const diaSemana = fecha.getDay(); // 0 = Domingo, 1 = Lunes, etc.
     const hora = fecha.getHours();
     const minutos = fecha.getMinutes();
 
@@ -184,13 +199,16 @@ export class EmpleadosService {
     ];
 
     const horarioDiaKey = diasSemana[diaSemana];
+    
+    // 🔥 CLAVE: getById ya devuelve el horario como un objeto, no como un string.
     const horarioDia = (empleado as any)[horarioDiaKey];
 
+    // Verificamos que el objeto del horario exista y tenga las propiedades necesarias
     if (!horarioDia || typeof horarioDia !== 'object' || !horarioDia.inicio || !horarioDia.fin) {
-      return { disponible: false, motivo: 'El empleado no trabaja este día' };
+      return { disponible: false, motivo: 'El empleado no trabaja este día o su horario está mal configurado' };
     }
 
-    // Verificar si está dentro del horario laboral
+    // Verificar si está dentro del horario
     const [horaInicio, minInicio] = horarioDia.inicio.split(':').map(Number);
     const [horaFin, minFin] = horarioDia.fin.split(':').map(Number);
 
@@ -200,63 +218,28 @@ export class EmpleadosService {
     const minutosFinServicio = minutosActuales + duracionMinutos;
 
     if (minutosActuales < minutosInicio || minutosFinServicio > minutosFin) {
-      return { 
-        disponible: false, 
-        motivo: `Fuera del horario laboral (${horarioDia.inicio} - ${horarioDia.fin})` 
-      };
+      const motivo = `Horario laboral: ${horarioDia.inicio} - ${horarioDia.fin}`;
+      return { disponible: false, motivo };
     }
 
-    // 🔥 CORREGIDO: Verificar solapamiento de citas
-    const inicioNuevaCita = fecha;
-    const finNuevaCita = new Date(fecha.getTime() + duracionMinutos * 60000);
-
-    // Buscar citas que se solapen con el nuevo horario
-    const citasConflicto = await prisma.cita.findMany({
+    // Verificar citas existentes
+    const finServicio = new Date(fecha.getTime() + duracionMinutos * 60000);
+    const citasConflicto = await prisma.cita.count({
       where: {
         empleadoId,
         estado: { in: ['PENDIENTE', 'CONFIRMADA'] },
-        // Una cita se solapa si:
-        // - Empieza antes de que termine la nueva Y termina después de que empiece la nueva
-        AND: [
-          { fechaHora: { lt: finNuevaCita } }, // La cita existente empieza antes de que termine la nueva
-          { 
-            // Calculamos cuándo termina la cita existente
-            fechaHora: { 
-              gte: new Date(inicioNuevaCita.getTime() - 2 * 60 * 60000) // Buscar en un rango razonable
-            }
-          }
-        ]
+        OR: [
+          { fechaHora: { lt: finServicio, gte: fecha } },
+          { fechaHora: { lte: fecha, gte: new Date(fecha.getTime() - 2 * 60 * 60000) } },
+        ],
       },
-      select: {
-        id: true,
-        fechaHora: true,
-        duracionMinutos: true,
-      }
     });
 
-    // Verificar manualmente si hay solapamiento real
-    for (const cita of citasConflicto) {
-      const inicioCitaExistente = cita.fechaHora;
-      const finCitaExistente = new Date(cita.fechaHora.getTime() + cita.duracionMinutos * 60000);
-
-      // Hay solapamiento si:
-      // (inicio1 < fin2) AND (inicio2 < fin1)
-      const haySolapamiento = (
-        inicioNuevaCita < finCitaExistente && 
-        inicioCitaExistente < finNuevaCita
-      );
-
-      if (haySolapamiento) {
-        const horaExistente = inicioCitaExistente.toTimeString().substring(0, 5);
-        return { 
-          disponible: false, 
-          motivo: `Ya tiene una cita a las ${horaExistente}` 
-        };
-      }
+    if (citasConflicto > 0) {
+      return { disponible: false, motivo: 'Ya tiene una cita agendada en ese horario' };
     }
 
     return { disponible: true };
   }
 }
-
-export const empleadosService = new EmpleadosService();
+export const empleadosService = new EmpleadosService(); 

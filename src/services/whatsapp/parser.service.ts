@@ -46,17 +46,29 @@ export class MessageParserService {
 
   esAfirmativo(texto: string): boolean {
     const normalizado = this.normalizarRespuesta(texto);
-    // aceptamos variantes: sí, si, s, yes, ok, 1
-    return ['si', 'sí', 's', 'yes', 'ok', '1', 'si, cancelar', 'si cancelar'].some((v) =>
-      normalizado === v || normalizado.includes(v)
+    // Aceptamos variantes de confirmación pero NO números (evitamos conflicto con el menú)
+    // ejemplos: 'si', 'sí', 's', 'yes', 'ok', 'claro', 'dale'
+    const positivos = ['si', 's', 'yes', 'ok', 'claro', 'dale', 'sip', 'si claro'];
+    // comprobar coincidencia exacta o que empiece con la palabra (para frases como "si, cancelar")
+    return positivos.some(
+      (v) =>
+        normalizado === v ||
+        normalizado.startsWith(v + ' ') ||
+        normalizado.startsWith(v + ',') ||
+        normalizado.includes(v + ',')
     );
   }
 
   esNegativo(texto: string): boolean {
     const normalizado = this.normalizarRespuesta(texto);
-    // aceptamos variantes: no, 2, nop, nope
-    return ['no', '2', 'nop', 'nope', 'n', 'no, conservar', 'no conservar'].some((v) =>
-      normalizado === v || normalizado.includes(v)
+    // Aceptamos variantes de negación pero NO números
+    const negativos = ['no', 'nop', 'nope', 'n', 'na'];
+    return negativos.some(
+      (v) =>
+        normalizado === v ||
+        normalizado.startsWith(v + ' ') ||
+        normalizado.startsWith(v + ',') ||
+        normalizado.includes(v + ',')
     );
   }
 }
