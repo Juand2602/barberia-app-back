@@ -1,3 +1,5 @@
+// src/services/whatsapp/bot.service.ts
+
 import prisma from '../../config/database';
 import { whatsappMessagesService } from './messages.service';
 import { messageParser } from './parser.service';
@@ -9,7 +11,6 @@ import { citasService } from '../citas.service';
 import { ConversationState, ConversationContext } from '../../types';
 import { botConfig } from '../../config/whatsapp';
 
-// Define un tipo para el servicio que espera la plantilla de mensaje
 type ServicioParaPlantilla = {
   nombre: string;
   precio: number;
@@ -96,6 +97,9 @@ export class WhatsAppBotService {
       case 'ESPERANDO_RESPUESTA_DESPUES_CITA':
         await this.manejarRespuestaDespuesCita(telefono, mensaje, contexto, conversacionId);
         break;
+      case 'ESPERANDO_RESPUESTA_NO_HAY_HORARIOS':
+        await this.manejarRespuestaNoHayHorarios(telefono, mensaje, contexto, conversacionId);
+        break;
       default:
         await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.OPCION_INVALIDA());
         await this.actualizarConversacion(conversacionId, 'INICIAL', contexto);
@@ -106,9 +110,11 @@ export class WhatsAppBotService {
     const opcion = messageParser.parsearOpcionNumerica(mensaje, 4);
     
     if (opcion === 1) {
+      // Dónde estamos
       await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.UBICACION());
       await this.actualizarConversacion(conversacionId, 'ESPERANDO_RESPUESTA_UBICACION', contexto);
     } else if (opcion === 2) {
+      // Lista de precios
       try {
         const servicios = await serviciosService.listarActivos();
         const serviciosParaPlantilla: ServicioParaPlantilla[] = servicios.map(s => ({
@@ -124,6 +130,7 @@ export class WhatsAppBotService {
         await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.ERROR_SERVIDOR());
       }
     } else if (opcion === 3) {
+      // Agendar una cita
       try {
         const barberos = await empleadosService.getAll(true);
         await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.ELEGIR_BARBERO(barberos));
@@ -133,6 +140,7 @@ export class WhatsAppBotService {
         await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.ERROR_SERVIDOR());
       }
     } else if (opcion === 4) {
+      // Cancelar una cita
       await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.SOLICITAR_RADICADO());
       await this.actualizarConversacion(conversacionId, 'ESPERANDO_RADICADO', { ...contexto, flujo: 'cancelacion' });
     } else {
@@ -168,6 +176,18 @@ export class WhatsAppBotService {
     if (messageParser.esAfirmativo(mensaje)) {
       await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.BIENVENIDA());
       await this.actualizarConversacion(conversacionId, 'INICIAL', contexto);
+    } else if (messageParser.esNegativo(mensaje)) {
+      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.DESPEDIDA());
+      await this.finalizarConversacion(conversacionId);
+    } else {
+      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.OPCION_INVALIDA());
+    }
+  }
+
+  private async manejarRespuestaNoHayHorarios(telefono: string, mensaje: string, contexto: ConversationContext, conversacionId: string) {
+    if (messageParser.esAfirmativo(mensaje)) {
+      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.SOLICITAR_FECHA());
+      await this.actualizarConversacion(conversacionId, 'ESPERANDO_FECHA', contexto);
     } else if (messageParser.esNegativo(mensaje)) {
       await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.DESPEDIDA());
       await this.finalizarConversacion(conversacionId);
@@ -213,9 +233,8 @@ export class WhatsAppBotService {
     const fecha = messageParser.parsearFecha(mensaje);
     
     if (fecha) {
-      // Asegurarnos de que la fecha sea correcta y no tenga problemas de zona horaria
       const fechaLocal = new Date(fecha);
-      fechaLocal.setHours(0, 0, 0, 0); // Establecer hora a medianoche para evitar problemas de zona horaria
+      fechaLocal.setHours(0, 0, 0, 0);
       
       contexto.fecha = fechaLocal.toISOString();
       await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.CONSULTANDO_AGENDA());
@@ -231,7 +250,7 @@ export class WhatsAppBotService {
           await this.actualizarConversacion(conversacionId, 'ESPERANDO_HORA', contexto);
         } else {
           await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.NO_HAY_HORARIOS());
-          await this.actualizarConversacion(conversacionId, 'ESPERANDO_FECHA', contexto);
+          await this.actualizarConversacion(conversacionId, 'ESPERANDO_RESPUESTA_NO_HAY_HORARIOS', contexto);
         }
       } catch (error) {
         console.error('Error consultando horarios disponibles:', error);
@@ -263,11 +282,10 @@ export class WhatsAppBotService {
           return;
         }
         
-        // Crear la fecha correctamente, asegurándonos de usar la zona horaria local
+        // Crear la fecha correctamente
         const fechaBase = new Date(contexto.fecha!);
         const [horas, minutos] = horaSeleccionada.split(':').map(Number);
         
-        // Crear una nueva fecha con la hora seleccionada
         const fechaHora = new Date(
           fechaBase.getFullYear(),
           fechaBase.getMonth(),
@@ -278,55 +296,73 @@ export class WhatsAppBotService {
           0
         );
         
-        // Verificar si ya existe una cita en ese horario antes de crearla
-        const citaExistente = await citasService.verificarCitaExistente(
-          contexto.empleadoId!,
-          fechaHora,
-          30 // duración en minutos
-        );
-        
-        if (citaExistente) {
-          await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.HORARIO_YA_OCUPADO());
-          // Recalcular horarios disponibles
-          const horarios = await citasService.calcularHorariosDisponibles(contexto.empleadoId!, fechaBase, 30);
-          
-          if (horarios.length > 0) {
-            const horariosFormateados = horarios.map((hora, idx) => ({ numero: idx + 1, hora: formatearHora(hora) }));
-            contexto.horariosDisponibles = horariosFormateados;
-            contexto.horariosRaw = horarios;
-            await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.HORARIOS_DISPONIBLES(horariosFormateados));
-            await this.actualizarConversacion(conversacionId, 'ESPERANDO_HORA', contexto);
-          } else {
-            await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.NO_HAY_HORARIOS());
-            await this.actualizarConversacion(conversacionId, 'ESPERANDO_FECHA', contexto);
-          }
-          return;
-        }
-        
         const radicado = generarRadicado();
         const servicios = await serviciosService.listarActivos();
         const servicio = servicios[0];
         
-        await citasService.create({
-          radicado, 
-          clienteId: cliente.id, 
-          empleadoId: contexto.empleadoId!,
-          servicioNombre: servicio.nombre, 
-          fechaHora, 
-          duracionMinutos: servicio.duracionMinutos, 
-          origen: 'WHATSAPP',
-        });
+        // Intentar crear la cita
+        try {
+          await citasService.create({
+            radicado, 
+            clienteId: cliente.id, 
+            empleadoId: contexto.empleadoId!,
+            servicioNombre: servicio.nombre, 
+            fechaHora, 
+            duracionMinutos: servicio.duracionMinutos, 
+            origen: 'WHATSAPP',
+          });
+          
+          // Si llega aquí, la cita se creó exitosamente
+          await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.CITA_CONFIRMADA({
+            radicado, 
+            servicio: servicio.nombre, 
+            barbero: contexto.empleadoNombre!,
+            fecha: formatearFecha(fechaHora), 
+            hora: formatearHora(horaSeleccionada),
+          }));
+          
+          await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.PUEDE_SERVIR_MAS());
+          await this.actualizarConversacion(conversacionId, 'ESPERANDO_RESPUESTA_DESPUES_CITA', contexto);
+          
+        } catch (createError: any) {
+          // Si el error es por horario ocupado, recalcular y mostrar nuevos horarios
+          if (createError.message.includes('ya no está disponible') || 
+              createError.message.includes('ya está agendada') ||
+              createError.message.includes('no está disponible')) {
+            
+            await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.HORARIO_YA_OCUPADO());
+            
+            // Recalcular horarios disponibles
+            const horarios = await citasService.calcularHorariosDisponibles(
+              contexto.empleadoId!, 
+              fechaBase, 
+              servicio.duracionMinutos
+            );
+            
+            if (horarios.length > 0) {
+              const horariosFormateados = horarios.map((hora, idx) => ({ 
+                numero: idx + 1, 
+                hora: formatearHora(hora) 
+              }));
+              
+              contexto.horariosDisponibles = horariosFormateados;
+              contexto.horariosRaw = horarios;
+              
+              await whatsappMessagesService.enviarMensaje(
+                telefono, 
+                MENSAJES.HORARIOS_DISPONIBLES(horariosFormateados)
+              );
+              await this.actualizarConversacion(conversacionId, 'ESPERANDO_HORA', contexto);
+            } else {
+              await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.NO_HAY_HORARIOS());
+              await this.actualizarConversacion(conversacionId, 'ESPERANDO_RESPUESTA_NO_HAY_HORARIOS', contexto);
+            }
+          } else {
+            // Otro tipo de error
+            throw createError;
+          }
+        }
         
-        await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.CITA_CONFIRMADA({
-          radicado, 
-          servicio: servicio.nombre, 
-          barbero: contexto.empleadoNombre!,
-          fecha: formatearFecha(fechaHora), 
-          hora: formatearHora(horaSeleccionada),
-        }));
-        
-        await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.PUEDE_SERVIR_MAS());
-        await this.actualizarConversacion(conversacionId, 'ESPERANDO_RESPUESTA_DESPUES_CITA', contexto);
       } catch (error) {
         console.error('Error creando cita:', error);
         await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.ERROR_SERVIDOR());
@@ -336,106 +372,100 @@ export class WhatsAppBotService {
     }
   }
 
-private async manejarRadicado(telefono: string, mensaje: string, contexto: ConversationContext, conversacionId: string) {
-  if (messageParser.esAfirmativo(mensaje)) {
-    await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.SOLICITAR_CODIGO_RADICADO());
-    return;
-  }
-  
-  if (messageParser.esNegativo(mensaje)) {
-    await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.SIN_RADICADO());
-    await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.PUEDE_SERVIR_MAS());
-    await this.actualizarConversacion(conversacionId, 'INICIAL', {});
-    return;
-  }
-  
-  // Intentar extraer el radicado del mensaje con múltiples intentos
-  let radicado = messageParser.extraerRadicado(mensaje);
-  
-  // Si no se encuentra el radicado con el formato esperado, intentar con el texto completo
-  if (!radicado) {
-    const textoLimpio = mensaje.trim().toUpperCase();
-    if (textoLimpio.startsWith('RAD-') && textoLimpio.length >= 15) {
-      radicado = textoLimpio;
+  private async manejarRadicado(telefono: string, mensaje: string, contexto: ConversationContext, conversacionId: string) {
+    if (messageParser.esAfirmativo(mensaje)) {
+      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.SOLICITAR_CODIGO_RADICADO());
+      return;
     }
-  }
-  
-  // Si todavía no se encuentra, intentar buscar en la base de datos con una búsqueda más flexible
-  if (!radicado) {
-    try {
-      // Buscar citas por teléfono que coincidan parcialmente con el mensaje
-      const citasCliente = await prisma.cita.findMany({
-        where: {
-          cliente: {
-            telefono: telefono
+    
+    if (messageParser.esNegativo(mensaje)) {
+      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.SIN_RADICADO());
+      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.PUEDE_SERVIR_MAS());
+      await this.actualizarConversacion(conversacionId, 'ESPERANDO_RESPUESTA_DESPUES_CITA', {});
+      return;
+    }
+    
+    // Intentar extraer el radicado del mensaje
+    let radicado = messageParser.extraerRadicado(mensaje);
+    
+    if (!radicado) {
+      const textoLimpio = mensaje.trim().toUpperCase();
+      if (textoLimpio.startsWith('RAD-') && textoLimpio.length >= 15) {
+        radicado = textoLimpio;
+      }
+    }
+    
+    // Búsqueda flexible por teléfono
+    if (!radicado) {
+      try {
+        const citasCliente = await prisma.cita.findMany({
+          where: {
+            cliente: { telefono: telefono },
+            estado: { in: ['PENDIENTE', 'CONFIRMADA'] }
           },
-          estado: { in: ['PENDIENTE', 'CONFIRMADA'] }
-        },
-        include: {
-          cliente: true,
-          empleado: true,
-        },
-        orderBy: { fechaHora: 'desc' },
-        take: 5 // Limitar a las 5 citas más recientes
-      });
-      
-      // Verificar si alguna de las citas coincide con el mensaje
-      for (const cita of citasCliente) {
-        if (mensaje.toUpperCase().includes(cita.radicado) || 
-            cita.radicado.includes(mensaje.toUpperCase())) {
-          radicado = cita.radicado;
-          break;
+          include: {
+            cliente: true,
+            empleado: true,
+          },
+          orderBy: { fechaHora: 'desc' },
+          take: 5
+        });
+        
+        for (const cita of citasCliente) {
+          if (mensaje.toUpperCase().includes(cita.radicado) || 
+              cita.radicado.includes(mensaje.toUpperCase())) {
+            radicado = cita.radicado;
+            break;
+          }
         }
+      } catch (error) {
+        console.error('Error buscando citas del cliente:', error);
+      }
+    }
+    
+    if (!radicado) {
+      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.RADICADO_NO_ENCONTRADO());
+      return;
+    }
+    
+    try {
+      const cita = await citasService.buscarPorRadicado(radicado);
+      
+      if (cita && cita.cliente.telefono === telefono) {
+        contexto.radicado = cita.radicado;
+        contexto.citaId = cita.id;
+        await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.CONFIRMAR_CANCELACION({
+          radicado: cita.radicado, 
+          servicio: cita.servicioNombre,
+          fecha: formatearFecha(cita.fechaHora), 
+          hora: formatearHora(cita.fechaHora.toTimeString().substring(0, 5)),
+        }));
+        await this.actualizarConversacion(conversacionId, 'ESPERANDO_CONFIRMACION_CANCELACION', contexto);
+      } else {
+        await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.RADICADO_NO_ENCONTRADO());
       }
     } catch (error) {
-      console.error('Error buscando citas del cliente:', error);
+      console.error('Error buscando cita por radicado:', error);
+      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.ERROR_SERVIDOR());
     }
   }
-  
-  if (!radicado) {
-    await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.RADICADO_NO_ENCONTRADO());
-    return;
-  }
-  
-  try {
-    const cita = await citasService.buscarPorRadicado(radicado);
-    
-    if (cita && cita.cliente.telefono === telefono) {
-      contexto.radicado = cita.radicado;
-      contexto.citaId = cita.id;
-      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.CONFIRMAR_CANCELACION({
-        radicado: cita.radicado, 
-        servicio: cita.servicioNombre,
-        fecha: formatearFecha(cita.fechaHora), 
-        hora: formatearHora(cita.fechaHora.toTimeString().substring(0, 5)),
-      }));
-      await this.actualizarConversacion(conversacionId, 'ESPERANDO_CONFIRMACION_CANCELACION', contexto);
-    } else {
-      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.RADICADO_NO_ENCONTRADO());
-    }
-  } catch (error) {
-    console.error('Error buscando cita por radicado:', error);
-    await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.ERROR_SERVIDOR());
-  }
-}
 
   private async manejarConfirmacionCancelacion(telefono: string, mensaje: string, contexto: ConversationContext, conversacionId: string) {
     const normalizado = messageParser.normalizarRespuesta(mensaje);
     
-    // Usar las funciones mejoradas del parser
-    if (messageParser.esAfirmativo(normalizado)) {
+    if (messageParser.esAfirmativo(normalizado) || normalizado.includes('cancelar')) {
       try {
         await citasService.cancelar(contexto.radicado!);
         await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.CITA_CANCELADA());
         await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.PUEDE_SERVIR_MAS());
-        await this.actualizarConversacion(conversacionId, 'INICIAL', {});
+        await this.actualizarConversacion(conversacionId, 'ESPERANDO_RESPUESTA_DESPUES_CITA', {});
       } catch (error) {
         console.error('Error cancelando cita:', error);
         await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.ERROR_SERVIDOR());
       }
-    } else if (messageParser.esNegativo(normalizado)) {
+    } else if (messageParser.esNegativo(normalizado) || normalizado.includes('conservar')) {
       await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.PUEDE_SERVIR_MAS());
-      await this.actualizarConversacion(conversacionId, 'INICIAL', {});
+      await this.actualizarConversacion(conversacionId, 'ESPERANDO_RESPUESTA_DESPUES_CITA', {});
     } else {
       await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.OPCION_INVALIDA());
     }

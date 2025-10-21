@@ -131,15 +131,43 @@ export class CitasService {
       throw new Error('No se pueden crear citas en el pasado');
     }
 
-    // Verificar disponibilidad del empleado
-    const disponibilidad = await empleadosService.verificarDisponibilidad(
+    // Verificar que no haya solapamiento con citas existentes
+    const citaExistente = await this.verificarCitaExistente(
       data.empleadoId,
       fechaHora,
       data.duracionMinutos
     );
 
-    if (!disponibilidad.disponible) {
-      throw new Error(disponibilidad.motivo || 'El empleado no está disponible en ese horario');
+    if (citaExistente) {
+      throw new Error('Lo siento, ese horario ya no está disponible. Por favor elige otro horario.');
+    }
+
+    // Verificar que el empleado trabaja en ese horario
+    const empleado = await empleadosService.getById(data.empleadoId);
+    if (!empleado) {
+      throw new Error('Empleado no encontrado');
+    }
+
+    const diaSemana = fechaHora.getDay();
+    const diasMap: any = {
+      0: 'horarioDomingo', 1: 'horarioLunes', 2: 'horarioMartes',
+      3: 'horarioMiercoles', 4: 'horarioJueves', 5: 'horarioViernes', 6: 'horarioSabado',
+    };
+
+    const horarioDia = (empleado as any)[diasMap[diaSemana]];
+    if (!horarioDia) {
+      throw new Error('El empleado no trabaja ese día');
+    }
+
+    // Verificar que la hora está dentro del horario laboral
+    const horaMinutos = fechaHora.getHours() * 60 + fechaHora.getMinutes();
+    const [horaInicio, minInicio] = horarioDia.inicio.split(':').map(Number);
+    const [horaFin, minFin] = horarioDia.fin.split(':').map(Number);
+    const inicioMinutos = horaInicio * 60 + minInicio;
+    const finMinutos = horaFin * 60 + minFin;
+
+    if (horaMinutos < inicioMinutos || horaMinutos + data.duracionMinutos > finMinutos) {
+      throw new Error('La hora está fuera del horario laboral del empleado');
     }
 
     // Verificar que el cliente existe
@@ -154,7 +182,7 @@ export class CitasService {
     // Crear la cita
     const cita = await prisma.cita.create({
       data: {
-        radicado: `CIT-${Date.now()}`,
+        radicado: data.radicado || `CIT-${Date.now()}`,
         clienteId: data.clienteId,
         empleadoId: data.empleadoId,
         servicioNombre: data.servicioNombre,

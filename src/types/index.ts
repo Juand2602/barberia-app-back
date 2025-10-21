@@ -1,3 +1,5 @@
+// src/types/index.ts
+
 export interface WhatsAppMessage {
   from: string;
   id: string;
@@ -40,6 +42,7 @@ export type ConversationState =
   | 'ESPERANDO_RESPUESTA_UBICACION'
   | 'ESPERANDO_RESPUESTA_LISTA_PRECIOS'
   | 'ESPERANDO_RESPUESTA_DESPUES_CITA'
+  | 'ESPERANDO_RESPUESTA_NO_HAY_HORARIOS' // ← NUEVO ESTADO
   | 'COMPLETADA';
 
 export interface ConversationContext {
