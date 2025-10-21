@@ -104,17 +104,25 @@ export class MessageParserService {
     return ['cancelar', 'salir', 'exit', 'atras', 'volver'].includes(normalizado);
   }
 
-  extraerRadicado(texto: string): string | null {
-    // Buscar patrones como RAD-YYYYMMDD-XXXX
-    const radicadoRegex = /rad-(\d{8})-[a-z0-9]{4}/i;
-    const match = texto.match(radicadoRegex);
-    
-    if (match) {
-      return match[0].toUpperCase();
-    }
-    
-    return null;
+ extraerRadicado(texto: string): string | null {
+  // Buscar patrones como RAD-YYYYMMDD-XXXX
+  const radicadoRegex = /rad-(\d{8})-[a-z0-9]{4}/i;
+  const match = texto.match(radicadoRegex);
+  
+  if (match) {
+    return match[0].toUpperCase();
   }
+  
+  // Si no encuentra el patrón completo, buscar cualquier combinación que parezca un radicado
+  const textoNormalizado = texto.toUpperCase().trim();
+  
+  // Verificar si el texto parece ser un radicado (empieza con RAD y tiene formato similar)
+  if (textoNormalizado.startsWith('RAD-') && textoNormalizado.length >= 15) {
+    return textoNormalizado;
+  }
+  
+  return null;
+}
 }
 
 export const messageParser = new MessageParserService();

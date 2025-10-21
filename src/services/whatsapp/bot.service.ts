@@ -336,43 +336,56 @@ export class WhatsAppBotService {
     }
   }
 
-  private async manejarRadicado(telefono: string, mensaje: string, contexto: ConversationContext, conversacionId: string) {
-    if (messageParser.esAfirmativo(mensaje)) {
-      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.SOLICITAR_CODIGO_RADICADO());
-      return;
-    }
-    
-    if (messageParser.esNegativo(mensaje)) {
-      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.SIN_RADICADO());
-      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.PUEDE_SERVIR_MAS());
-      await this.actualizarConversacion(conversacionId, 'INICIAL', {});
-      return;
-    }
-    
-    // Intentar extraer el radicado del mensaje
-    const radicado = messageParser.extraerRadicado(mensaje) || mensaje.trim().toUpperCase();
-    
-    try {
-      const cita = await citasService.buscarPorRadicado(radicado);
-      
-      if (cita && cita.cliente.telefono === telefono) {
-        contexto.radicado = cita.radicado;
-        contexto.citaId = cita.id;
-        await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.CONFIRMAR_CANCELACION({
-          radicado: cita.radicado, 
-          servicio: cita.servicioNombre,
-          fecha: formatearFecha(cita.fechaHora), 
-          hora: formatearHora(cita.fechaHora.toTimeString().substring(0, 5)),
-        }));
-        await this.actualizarConversacion(conversacionId, 'ESPERANDO_CONFIRMACION_CANCELACION', contexto);
-      } else {
-        await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.RADICADO_NO_ENCONTRADO());
-      }
-    } catch (error) {
-      console.error('Error buscando cita por radicado:', error);
-      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.ERROR_SERVIDOR());
+ private async manejarRadicado(telefono: string, mensaje: string, contexto: ConversationContext, conversacionId: string) {
+  if (messageParser.esAfirmativo(mensaje)) {
+    await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.SOLICITAR_CODIGO_RADICADO());
+    return;
+  }
+  
+  if (messageParser.esNegativo(mensaje)) {
+    await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.SIN_RADICADO());
+    await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.PUEDE_SERVIR_MAS());
+    await this.actualizarConversacion(conversacionId, 'INICIAL', {});
+    return;
+  }
+  
+  // Intentar extraer el radicado del mensaje con múltiples intentos
+  let radicado = messageParser.extraerRadicado(mensaje);
+  
+  // Si no se encuentra el radicado con el formato esperado, intentar con el texto completo
+  if (!radicado) {
+    const textoLimpio = mensaje.trim().toUpperCase();
+    if (textoLimpio.startsWith('RAD-') && textoLimpio.length >= 15) {
+      radicado = textoLimpio;
     }
   }
+  
+  if (!radicado) {
+    await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.RADICADO_NO_ENCONTRADO());
+    return;
+  }
+  
+  try {
+    const cita = await citasService.buscarPorRadicado(radicado);
+    
+    if (cita && cita.cliente.telefono === telefono) {
+      contexto.radicado = cita.radicado;
+      contexto.citaId = cita.id;
+      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.CONFIRMAR_CANCELACION({
+        radicado: cita.radicado, 
+        servicio: cita.servicioNombre,
+        fecha: formatearFecha(cita.fechaHora), 
+        hora: formatearHora(cita.fechaHora.toTimeString().substring(0, 5)),
+      }));
+      await this.actualizarConversacion(conversacionId, 'ESPERANDO_CONFIRMACION_CANCELACION', contexto);
+    } else {
+      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.RADICADO_NO_ENCONTRADO());
+    }
+  } catch (error) {
+    console.error('Error buscando cita por radicado:', error);
+    await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.ERROR_SERVIDOR());
+  }
+}
 
   private async manejarConfirmacionCancelacion(telefono: string, mensaje: string, contexto: ConversationContext, conversacionId: string) {
     const normalizado = messageParser.normalizarRespuesta(mensaje);
