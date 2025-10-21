@@ -1,4 +1,4 @@
-// src/services/citas.service.ts
+// src/services/citas.service.ts (Nuevo Backend - CORREGIDO)
 
 import prisma from '../config/database';
 import { empleadosService } from './empleados.service';
@@ -383,52 +383,24 @@ export class CitasService {
     const [horaFin, minFin] = horarioDia.fin.split(':').map(Number);
 
     const slots: string[] = [];
+    let horaActual = horaInicio * 60 + minInicio;
+    const horaFinTotal = horaFin * 60 + minFin;
 
-    // Base date para la fecha dada, con la hora de inicio/fin ajustadas
-    const fechaBase = new Date(fecha);
-    fechaBase.setHours(0, 0, 0, 0);
-
-    let minutoActual = horaInicio * 60 + minInicio;
-    const minutoFinTotal = horaFin * 60 + minFin;
-
-    while (minutoActual + duracionMinutos <= minutoFinTotal) {
-        const h = Math.floor(minutoActual / 60);
-        const m = minutoActual % 60;
-
-        // Construir Date objects para comparar intervalos
-        const slotStart = new Date(
-          fechaBase.getFullYear(),
-          fechaBase.getMonth(),
-          fechaBase.getDate(),
-          h,
-          m,
-          0,
-          0
-        );
-        const slotEnd = new Date(slotStart.getTime() + duracionMinutos * 60000);
-
-        // Comprobar solapamiento con cualquier cita existente
-        let solapa = false;
-        for (const cita of citasExistentes) {
-          const citaStart = new Date(cita.fechaHora);
-          const citaEnd = new Date(citaStart.getTime() + (cita.duracionMinutos || 30) * 60000);
-
-          // overlap if slotStart < citaEnd && slotEnd > citaStart
-          if (slotStart < citaEnd && slotEnd > citaStart) {
-            solapa = true;
-            break;
-          }
-        }
-
-        if (!solapa) {
-          const horaStr = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
-          slots.push(horaStr);
-        }
-
-        minutoActual += duracionMinutos;
+    while (horaActual + duracionMinutos <= horaFinTotal) {
+        const h = Math.floor(horaActual / 60);
+        const m = horaActual % 60;
+        const horaStr = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+        slots.push(horaStr);
+        horaActual += duracionMinutos;
     }
 
-    return slots;
+    const ocupados = new Set(citasExistentes.map(c => {
+        const h = c.fechaHora.getHours();
+        const m = c.fechaHora.getMinutes();
+        return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+    }));
+
+    return slots.filter(slot => !ocupados.has(slot));
   }
 
   /**
@@ -458,7 +430,7 @@ export class CitasService {
     
     // Verificar si alguna de las citas existentes se solapa con la nueva cita
     for (const citaExistente of citasDelDia) {
-      const finCitaExistente = new Date(citaExistente.fechaHora.getTime() + (citaExistente.duracionMinutos || 30) * 60000);
+      const finCitaExistente = new Date(citaExistente.fechaHora.getTime() + citaExistente.duracionMinutos * 60000);
       
       // Si la nueva cita comienza antes de que termine la cita existente
       // Y la nueva cita termina después de que comience la cita existente
@@ -481,34 +453,20 @@ export class CitasService {
   ) {
     const finServicio = new Date(fecha.getTime() + duracionMinutos * 60000);
 
-    // Obtener todas las citas del empleado ese día (excluyendo la cita actual)
-    const inicioDia = new Date(fecha);
-    inicioDia.setHours(0, 0, 0, 0);
-
-    const finDia = new Date(fecha);
-    finDia.setHours(23, 59, 59, 999);
-
-    const citasDelDia = await prisma.cita.findMany({
+    const citasConflicto = await prisma.cita.count({
       where: {
         empleadoId,
-        id: { not: citaId },
+        id: { not: citaId }, // Excluir la cita actual
         estado: { in: ['PENDIENTE', 'CONFIRMADA'] },
-        fechaHora: {
-          gte: inicioDia,
-          lte: finDia,
-        },
+        OR: [
+          { fechaHora: { lt: fecha, gte: new Date(fecha.getTime() - 2 * 60 * 60000) } },
+          { fechaHora: { gte: fecha, lt: finServicio } },
+        ],
       },
     });
 
-    for (const citaExistente of citasDelDia) {
-      const inicioExistente = new Date(citaExistente.fechaHora);
-      const finExistente = new Date(inicioExistente.getTime() + (citaExistente.duracionMinutos || 30) * 60000);
-
-      // Si la nueva cita comienza antes de que termine la cita existente
-      // y la nueva cita termina después de que comience la cita existente -> solapan
-      if (fecha < finExistente && finServicio > inicioExistente) {
-        return { disponible: false, motivo: 'Ya tiene una cita agendada en ese horario' };
-      }
+    if (citasConflicto > 0) {
+      return { disponible: false, motivo: 'Ya tiene una cita agendada en ese horario' };
     }
 
     return { disponible: true };

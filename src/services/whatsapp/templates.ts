@@ -133,6 +133,7 @@ Por favor seleccione otro horario de la lista disponible.`,
 ⏰ Hora: ${datos.hora}
 
 🧑🏾‍🦲 Por favor conserve su código de radicado para cualquier modificación
+💡 *Puede mantener presionado el código de radicado para copiarlo*
 
 ¡Le esperamos! 💈`,
 
@@ -152,7 +153,11 @@ Escribe "cancelar" en cualquier momento para salir del proceso.`,
   SOLICITAR_CODIGO_RADICADO: () =>
     `🧑🏾‍🦲 Por favor envíeme el código de radicado de su cita
 
-Ejemplo: RAD-20231225-ABCD
+Ejemplo: RAD-20231021-ABCD
+
+💡 *Puede mantener presionado el código de radicado en el mensaje anterior y seleccionar "Copiar"*
+
+🔍 *También puede enviar solo una parte del código, como "20231021" o "ABCD", y buscaré su cita*
 
 Escribe "cancelar" en cualquier momento para salir del proceso.`,
 
@@ -160,6 +165,8 @@ Escribe "cancelar" en cualquier momento para salir del proceso.`,
     `🧑🏾‍🦲 No encontramos ninguna cita con ese código de radicado
 
 Por favor verifique e intente nuevamente
+
+💡 *Asegúrese de copiar el código completo, incluyendo "RAD-" al inicio*
 
 Escribe "cancelar" en cualquier momento para salir del proceso.`,
 

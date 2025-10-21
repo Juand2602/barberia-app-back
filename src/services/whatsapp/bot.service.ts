@@ -336,88 +336,88 @@ export class WhatsAppBotService {
     }
   }
 
-private async manejarRadicado(telefono: string, mensaje: string, contexto: ConversationContext, conversacionId: string) {
-  if (messageParser.esAfirmativo(mensaje)) {
-    await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.SOLICITAR_CODIGO_RADICADO());
-    return;
-  }
-  
-  if (messageParser.esNegativo(mensaje)) {
-    await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.SIN_RADICADO());
-    await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.PUEDE_SERVIR_MAS());
-    await this.actualizarConversacion(conversacionId, 'INICIAL', {});
-    return;
-  }
-  
-  // Intentar extraer el radicado del mensaje con múltiples intentos
-  let radicado = messageParser.extraerRadicado(mensaje);
-  
-  // Si no se encuentra el radicado con el formato esperado, intentar con el texto completo
-  if (!radicado) {
-    const textoLimpio = mensaje.trim().toUpperCase();
-    if (textoLimpio.startsWith('RAD-') && textoLimpio.length >= 15) {
-      radicado = textoLimpio;
+  private async manejarRadicado(telefono: string, mensaje: string, contexto: ConversationContext, conversacionId: string) {
+    if (messageParser.esAfirmativo(mensaje)) {
+      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.SOLICITAR_CODIGO_RADICADO());
+      return;
     }
-  }
-  
-  // Si todavía no se encuentra, intentar buscar en la base de datos con una búsqueda más flexible
-  if (!radicado) {
-    try {
-      // Buscar citas por teléfono que coincidan parcialmente con el mensaje
-      const citasCliente = await prisma.cita.findMany({
-        where: {
-          cliente: {
-            telefono: telefono
+    
+    if (messageParser.esNegativo(mensaje)) {
+      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.SIN_RADICADO());
+      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.PUEDE_SERVIR_MAS());
+      await this.actualizarConversacion(conversacionId, 'INICIAL', {});
+      return;
+    }
+    
+    // Intentar extraer el radicado del mensaje con múltiples intentos
+    let radicado = messageParser.extraerRadicado(mensaje);
+    
+    // Si no se encuentra el radicado con el formato esperado, intentar con el texto completo
+    if (!radicado) {
+      const textoLimpio = mensaje.trim().toUpperCase();
+      if (textoLimpio.startsWith('RAD-') && textoLimpio.length >= 15) {
+        radicado = textoLimpio;
+      }
+    }
+    
+    // Si todavía no se encuentra, intentar buscar en la base de datos con una búsqueda más flexible
+    if (!radicado) {
+      try {
+        // Buscar citas por teléfono que coincidan parcialmente con el mensaje
+        const citasCliente = await prisma.cita.findMany({
+          where: {
+            cliente: {
+              telefono: telefono
+            },
+            estado: { in: ['PENDIENTE', 'CONFIRMADA'] }
           },
-          estado: { in: ['PENDIENTE', 'CONFIRMADA'] }
-        },
-        include: {
-          cliente: true,
-          empleado: true,
-        },
-        orderBy: { fechaHora: 'desc' },
-        take: 5 // Limitar a las 5 citas más recientes
-      });
-      
-      // Verificar si alguna de las citas coincide con el mensaje
-      for (const cita of citasCliente) {
-        if (mensaje.toUpperCase().includes(cita.radicado) || 
-            cita.radicado.includes(mensaje.toUpperCase())) {
-          radicado = cita.radicado;
-          break;
+          include: {
+            cliente: true,
+            empleado: true,
+          },
+          orderBy: { fechaHora: 'desc' },
+          take: 5 // Limitar a las 5 citas más recientes
+        });
+        
+        // Verificar si alguna de las citas coincide con el mensaje
+        for (const cita of citasCliente) {
+          if (mensaje.toUpperCase().includes(cita.radicado) || 
+              cita.radicado.includes(mensaje.toUpperCase())) {
+            radicado = cita.radicado;
+            break;
+          }
         }
+      } catch (error) {
+        console.error('Error buscando citas del cliente:', error);
+      }
+    }
+    
+    if (!radicado) {
+      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.RADICADO_NO_ENCONTRADO());
+      return;
+    }
+    
+    try {
+      const cita = await citasService.buscarPorRadicado(radicado);
+      
+      if (cita && cita.cliente.telefono === telefono) {
+        contexto.radicado = cita.radicado;
+        contexto.citaId = cita.id;
+        await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.CONFIRMAR_CANCELACION({
+          radicado: cita.radicado, 
+          servicio: cita.servicioNombre,
+          fecha: formatearFecha(cita.fechaHora), 
+          hora: formatearHora(cita.fechaHora.toTimeString().substring(0, 5)),
+        }));
+        await this.actualizarConversacion(conversacionId, 'ESPERANDO_CONFIRMACION_CANCELACION', contexto);
+      } else {
+        await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.RADICADO_NO_ENCONTRADO());
       }
     } catch (error) {
-      console.error('Error buscando citas del cliente:', error);
+      console.error('Error buscando cita por radicado:', error);
+      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.ERROR_SERVIDOR());
     }
   }
-  
-  if (!radicado) {
-    await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.RADICADO_NO_ENCONTRADO());
-    return;
-  }
-  
-  try {
-    const cita = await citasService.buscarPorRadicado(radicado);
-    
-    if (cita && cita.cliente.telefono === telefono) {
-      contexto.radicado = cita.radicado;
-      contexto.citaId = cita.id;
-      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.CONFIRMAR_CANCELACION({
-        radicado: cita.radicado, 
-        servicio: cita.servicioNombre,
-        fecha: formatearFecha(cita.fechaHora), 
-        hora: formatearHora(cita.fechaHora.toTimeString().substring(0, 5)),
-      }));
-      await this.actualizarConversacion(conversacionId, 'ESPERANDO_CONFIRMACION_CANCELACION', contexto);
-    } else {
-      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.RADICADO_NO_ENCONTRADO());
-    }
-  } catch (error) {
-    console.error('Error buscando cita por radicado:', error);
-    await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.ERROR_SERVIDOR());
-  }
-}
 
   private async manejarConfirmacionCancelacion(telefono: string, mensaje: string, contexto: ConversationContext, conversacionId: string) {
     const normalizado = messageParser.normalizarRespuesta(mensaje);
