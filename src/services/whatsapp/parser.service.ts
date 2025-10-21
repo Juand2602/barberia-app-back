@@ -1,4 +1,3 @@
-// src/services/whatsapp/parser.service.ts
 export class MessageParserService {
   parsearFecha(texto: string): Date | null {
     const hoy = new Date();

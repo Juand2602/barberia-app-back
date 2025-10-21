@@ -403,6 +403,38 @@ export class CitasService {
     return slots.filter(slot => !ocupados.has(slot));
   }
 
+  /**
+   * Verifica si ya existe una cita para un empleado en un horario específico.
+   * Usado por el bot de WhatsApp.
+   */
+  async verificarCitaExistente(empleadoId: string, fechaHora: Date, duracionMinutos: number) {
+    const finServicio = new Date(fechaHora.getTime() + duracionMinutos * 60000);
+    
+    const citasConflicto = await prisma.cita.findFirst({
+      where: {
+        empleadoId,
+        estado: { in: ['PENDIENTE', 'CONFIRMADA'] },
+        OR: [
+          // Cita que comienza durante el nuevo servicio
+          { 
+            fechaHora: { 
+              gte: fechaHora, 
+              lt: finServicio 
+            } 
+          },
+          // Cita que termina durante el nuevo servicio
+          { 
+            fechaHora: { 
+              lt: fechaHora,
+              gte: new Date(fechaHora.getTime() - duracionMinutos * 60000)
+            } 
+          },
+        ],
+      },
+    });
+    
+    return citasConflicto;
+  }
 
   // Verificar disponibilidad para actualizar (excluyendo la cita actual)
   private async verificarDisponibilidadParaActualizar(

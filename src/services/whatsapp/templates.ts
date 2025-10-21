@@ -112,6 +112,11 @@ Escribe "cancelar" en cualquier momento para salir del proceso.`,
 
 Escribe "cancelar" en cualquier momento para salir del proceso.`,
 
+  HORARIO_YA_OCUPADO: () =>
+    `🧑🏾‍🦲 Lo siento, ese horario ya ha sido ocupado por otro cliente.
+
+Por favor seleccione otro horario de la lista disponible.`,
+
   CITA_CONFIRMADA: (datos: {
     radicado: string;
     servicio: string;

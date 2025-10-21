@@ -1,4 +1,3 @@
-// src/services/whatsapp/bot.service.ts
 import prisma from '../../config/database';
 import { whatsappMessagesService } from './messages.service';
 import { messageParser } from './parser.service';
@@ -94,6 +93,9 @@ export class WhatsAppBotService {
       case 'ESPERANDO_RESPUESTA_LISTA_PRECIOS':
         await this.manejarRespuestaListaPrecios(telefono, mensaje, contexto, conversacionId);
         break;
+      case 'ESPERANDO_RESPUESTA_DESPUES_CITA':
+        await this.manejarRespuestaDespuesCita(telefono, mensaje, contexto, conversacionId);
+        break;
       default:
         await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.OPCION_INVALIDA());
         await this.actualizarConversacion(conversacionId, 'INICIAL', contexto);
@@ -115,6 +117,7 @@ export class WhatsAppBotService {
           descripcion: s.descripcion ?? undefined,
         }));
         await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.LISTA_PRECIOS(serviciosParaPlantilla));
+        await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.PUEDE_SERVIR_MAS());
         await this.actualizarConversacion(conversacionId, 'ESPERANDO_RESPUESTA_LISTA_PRECIOS', contexto);
       } catch (error) {
         console.error('Error obteniendo servicios:', error);
@@ -150,6 +153,18 @@ export class WhatsAppBotService {
   }
 
   private async manejarRespuestaListaPrecios(telefono: string, mensaje: string, contexto: ConversationContext, conversacionId: string) {
+    if (messageParser.esAfirmativo(mensaje)) {
+      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.BIENVENIDA());
+      await this.actualizarConversacion(conversacionId, 'INICIAL', contexto);
+    } else if (messageParser.esNegativo(mensaje)) {
+      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.DESPEDIDA());
+      await this.finalizarConversacion(conversacionId);
+    } else {
+      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.OPCION_INVALIDA());
+    }
+  }
+
+  private async manejarRespuestaDespuesCita(telefono: string, mensaje: string, contexto: ConversationContext, conversacionId: string) {
     if (messageParser.esAfirmativo(mensaje)) {
       await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.BIENVENIDA());
       await this.actualizarConversacion(conversacionId, 'INICIAL', contexto);
@@ -263,6 +278,31 @@ export class WhatsAppBotService {
           0
         );
         
+        // Verificar si ya existe una cita en ese horario antes de crearla
+        const citaExistente = await citasService.verificarCitaExistente(
+          contexto.empleadoId!,
+          fechaHora,
+          30 // duración en minutos
+        );
+        
+        if (citaExistente) {
+          await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.HORARIO_YA_OCUPADO());
+          // Recalcular horarios disponibles
+          const horarios = await citasService.calcularHorariosDisponibles(contexto.empleadoId!, fechaBase, 30);
+          
+          if (horarios.length > 0) {
+            const horariosFormateados = horarios.map((hora, idx) => ({ numero: idx + 1, hora: formatearHora(hora) }));
+            contexto.horariosDisponibles = horariosFormateados;
+            contexto.horariosRaw = horarios;
+            await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.HORARIOS_DISPONIBLES(horariosFormateados));
+            await this.actualizarConversacion(conversacionId, 'ESPERANDO_HORA', contexto);
+          } else {
+            await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.NO_HAY_HORARIOS());
+            await this.actualizarConversacion(conversacionId, 'ESPERANDO_FECHA', contexto);
+          }
+          return;
+        }
+        
         const radicado = generarRadicado();
         const servicios = await serviciosService.listarActivos();
         const servicio = servicios[0];
@@ -286,7 +326,7 @@ export class WhatsAppBotService {
         }));
         
         await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.PUEDE_SERVIR_MAS());
-        await this.actualizarConversacion(conversacionId, 'INICIAL', {});
+        await this.actualizarConversacion(conversacionId, 'ESPERANDO_RESPUESTA_DESPUES_CITA', contexto);
       } catch (error) {
         console.error('Error creando cita:', error);
         await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.ERROR_SERVIDOR());
