@@ -1,3 +1,4 @@
+// src/services/whatsapp/bot.service.ts
 import prisma from '../../config/database';
 import { whatsappMessagesService } from './messages.service';
 import { messageParser } from './parser.service';
@@ -87,6 +88,12 @@ export class WhatsAppBotService {
       case 'ESPERANDO_CONFIRMACION_CANCELACION':
         await this.manejarConfirmacionCancelacion(telefono, mensaje, contexto, conversacionId);
         break;
+      case 'ESPERANDO_RESPUESTA_UBICACION':
+        await this.manejarRespuestaUbicacion(telefono, mensaje, contexto, conversacionId);
+        break;
+      case 'ESPERANDO_RESPUESTA_LISTA_PRECIOS':
+        await this.manejarRespuestaListaPrecios(telefono, mensaje, contexto, conversacionId);
+        break;
       default:
         await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.OPCION_INVALIDA());
         await this.actualizarConversacion(conversacionId, 'INICIAL', contexto);
@@ -98,7 +105,7 @@ export class WhatsAppBotService {
     
     if (opcion === 1) {
       await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.UBICACION());
-      await this.actualizarConversacion(conversacionId, 'INICIAL', contexto);
+      await this.actualizarConversacion(conversacionId, 'ESPERANDO_RESPUESTA_UBICACION', contexto);
     } else if (opcion === 2) {
       try {
         const servicios = await serviciosService.listarActivos();
@@ -108,8 +115,7 @@ export class WhatsAppBotService {
           descripcion: s.descripcion ?? undefined,
         }));
         await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.LISTA_PRECIOS(serviciosParaPlantilla));
-        await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.PUEDE_SERVIR_MAS());
-        await this.actualizarConversacion(conversacionId, 'INICIAL', contexto);
+        await this.actualizarConversacion(conversacionId, 'ESPERANDO_RESPUESTA_LISTA_PRECIOS', contexto);
       } catch (error) {
         console.error('Error obteniendo servicios:', error);
         await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.ERROR_SERVIDOR());
@@ -126,6 +132,30 @@ export class WhatsAppBotService {
     } else if (opcion === 4) {
       await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.SOLICITAR_RADICADO());
       await this.actualizarConversacion(conversacionId, 'ESPERANDO_RADICADO', { ...contexto, flujo: 'cancelacion' });
+    } else {
+      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.OPCION_INVALIDA());
+    }
+  }
+
+  private async manejarRespuestaUbicacion(telefono: string, mensaje: string, contexto: ConversationContext, conversacionId: string) {
+    if (messageParser.esAfirmativo(mensaje)) {
+      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.BIENVENIDA());
+      await this.actualizarConversacion(conversacionId, 'INICIAL', contexto);
+    } else if (messageParser.esNegativo(mensaje)) {
+      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.DESPEDIDA());
+      await this.finalizarConversacion(conversacionId);
+    } else {
+      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.OPCION_INVALIDA());
+    }
+  }
+
+  private async manejarRespuestaListaPrecios(telefono: string, mensaje: string, contexto: ConversationContext, conversacionId: string) {
+    if (messageParser.esAfirmativo(mensaje)) {
+      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.BIENVENIDA());
+      await this.actualizarConversacion(conversacionId, 'INICIAL', contexto);
+    } else if (messageParser.esNegativo(mensaje)) {
+      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.DESPEDIDA());
+      await this.finalizarConversacion(conversacionId);
     } else {
       await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.OPCION_INVALIDA());
     }

@@ -1,5 +1,4 @@
-import { barberiaConfig } from '../../config/whatsapp';
-
+// src/services/whatsapp/parser.service.ts
 export class MessageParserService {
   parsearFecha(texto: string): Date | null {
     const hoy = new Date();
@@ -88,7 +87,7 @@ export class MessageParserService {
   esAfirmativo(texto: string): boolean {
     const normalizado = this.normalizarRespuesta(texto);
     // Detectar "si" incluso si está en una frase más larga
-    return ['si', 'sí', 'yes', 'ok', '1', 'cierto', 'claro', 'de acuerdo'].some(afirmacion => 
+    return ['si', 'sí', 'yes', 'ok', '1', 'cierto', 'claro', 'de acuerdo', 'sip'].some(afirmacion => 
       normalizado.includes(afirmacion)
     );
   }
@@ -96,7 +95,7 @@ export class MessageParserService {
   esNegativo(texto: string): boolean {
     const normalizado = this.normalizarRespuesta(texto);
     // Detectar "no" incluso si está en una frase más larga
-    return ['no', '2', 'nop', 'nope', 'negativo'].some(negacion => 
+    return ['no', '2', 'nop', 'nope', 'negativo', 'nó'].some(negacion => 
       normalizado.includes(negacion)
     );
   }

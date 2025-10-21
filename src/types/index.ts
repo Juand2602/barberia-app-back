@@ -37,6 +37,8 @@ export type ConversationState =
   | 'ESPERANDO_CONFIRMACION'
   | 'ESPERANDO_RADICADO'
   | 'ESPERANDO_CONFIRMACION_CANCELACION'
+  | 'ESPERANDO_RESPUESTA_UBICACION'  // Nuevo estado para respuestas a la ubicación
+  | 'ESPERANDO_RESPUESTA_LISTA_PRECIOS' 
   | 'COMPLETADA';
 
 export interface ConversationContext {
