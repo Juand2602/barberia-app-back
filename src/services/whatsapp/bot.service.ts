@@ -336,7 +336,7 @@ export class WhatsAppBotService {
     }
   }
 
- private async manejarRadicado(telefono: string, mensaje: string, contexto: ConversationContext, conversacionId: string) {
+private async manejarRadicado(telefono: string, mensaje: string, contexto: ConversationContext, conversacionId: string) {
   if (messageParser.esAfirmativo(mensaje)) {
     await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.SOLICITAR_CODIGO_RADICADO());
     return;

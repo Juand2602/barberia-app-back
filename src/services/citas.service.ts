@@ -407,42 +407,57 @@ export class CitasService {
    * Verifica si ya existe una cita para un empleado en un horario específico.
    * Usado por el bot de WhatsApp.
    */
- /**
- * Verifica si ya existe una cita para un empleado en un horario específico.
- * Usado por el bot de WhatsApp.
- */
-async verificarCitaExistente(empleadoId: string, fechaHora: Date, duracionMinutos: number) {
-  const finServicio = new Date(fechaHora.getTime() + duracionMinutos * 60000);
-  
-  const citasConflicto = await prisma.cita.findFirst({
-    where: {
-      empleadoId,
-      estado: { in: ['PENDIENTE', 'CONFIRMADA'] },
-      OR: [
-        // Cita que comienza durante el nuevo servicio
-        { 
-          fechaHora: { 
-            gte: fechaHora, 
-            lt: finServicio 
-          } 
-        },
-        // Cita que termina durante el nuevo servicio (corregido)
-        { 
-          AND: [
-            { fechaHora: { lt: fechaHora } },
-            { 
-              fechaHora: { 
-                gte: new Date(fechaHora.getTime() - 60 * 60000) // Asumiendo duración máxima de 60 minutos
-              } 
-            }
-          ]
-        },
-      ],
-    },
-  });
-  
-  return citasConflicto;
-}
+  async verificarCitaExistente(empleadoId: string, fechaHora: Date, duracionMinutos: number) {
+    const finServicio = new Date(fechaHora.getTime() + duracionMinutos * 60000);
+    
+    const citasConflicto = await prisma.cita.findFirst({
+      where: {
+        empleadoId,
+        estado: { in: ['PENDIENTE', 'CONFIRMADA'] },
+        OR: [
+          // Cita existente que comienza durante el nuevo servicio
+          { 
+            fechaHora: { 
+              gte: fechaHora, 
+              lt: finServicio 
+            } 
+          },
+          // Cita existente que termina durante el nuevo servicio
+          { 
+            AND: [
+              { fechaHora: { lt: fechaHora } },
+              // La cita existente termina después de que comience la nueva cita
+              { 
+                fechaHora: { 
+                  gte: new Date(fechaHora.getTime() - 60 * 60000) // Asumiendo duración máxima de 60 minutos
+                } 
+              }
+            ]
+          },
+          // Nuevo caso: La nueva cita comienza durante una cita existente
+          {
+            AND: [
+              { fechaHora: { gt: fechaHora } },
+              { fechaHora: { lt: finServicio } }
+            ]
+          },
+          // Nuevo caso: La nueva cita termina durante una cita existente
+          {
+            AND: [
+              { fechaHora: { lt: finServicio } },
+              { 
+                fechaHora: { 
+                  gte: new Date(finServicio.getTime() - 60 * 60000) // Asumiendo duración máxima de 60 minutos
+                } 
+              }
+            ]
+          }
+        ],
+      },
+    });
+    
+    return citasConflicto;
+  }
 
   // Verificar disponibilidad para actualizar (excluyendo la cita actual)
   private async verificarDisponibilidadParaActualizar(
