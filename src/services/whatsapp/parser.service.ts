@@ -1,3 +1,5 @@
+// src/services/whatsapp/parser.service.ts
+
 export class MessageParserService {
   parsearFecha(texto: string): Date | null {
     const hoy = new Date();
@@ -85,15 +87,13 @@ export class MessageParserService {
 
   esAfirmativo(texto: string): boolean {
     const normalizado = this.normalizarRespuesta(texto);
-    // Detectar "si" incluso si está en una frase más larga
-    return ['si', 'sí', 'yes', 'ok', '1', 'cierto', 'claro', 'de acuerdo', 'sip'].some(afirmacion => 
+    return ['si', 'sí', 'yes', 'ok', '1', 'cierto', 'claro', 'de acuerdo', 'sip', 'sep'].some(afirmacion => 
       normalizado.includes(afirmacion)
     );
   }
 
   esNegativo(texto: string): boolean {
     const normalizado = this.normalizarRespuesta(texto);
-    // Detectar "no" incluso si está en una frase más larga
     return ['no', '2', 'nop', 'nope', 'negativo', 'nó'].some(negacion => 
       normalizado.includes(negacion)
     );
@@ -104,37 +104,71 @@ export class MessageParserService {
     return ['cancelar', 'salir', 'exit', 'atras', 'volver'].includes(normalizado);
   }
 
+  /**
+   * Extrae el radicado del texto con búsqueda flexible
+   * Soporta múltiples formatos:
+   * - RAD-4K7M2P (formato nuevo corto)
+   * - RAD-20231021-ABCD (formato antiguo largo)
+   * - 4K7M2P (solo el código)
+   * - 20231021-ABCD (formato antiguo sin prefijo)
+   */
   extraerRadicado(texto: string): string | null {
-    // Buscar patrones como RAD-YYYYMMDD-XXXX
-    const radicadoRegex = /rad[-\s]?(\d{8})[-\s]?([a-z0-9]{4})/i;
-    const match = texto.match(radicadoRegex);
+    // Limpiar el texto
+    const textoLimpio = texto.trim().toUpperCase().replace(/\s+/g, '');
     
-    if (match) {
-      return `RAD-${match[1]}-${match[2]}`.toUpperCase();
+    // 1. Buscar formato nuevo corto: RAD-XXXXXX (6 caracteres alfanuméricos)
+    const formatoCorto = /RAD[-\s]?([A-Z0-9]{6})/i;
+    const matchCorto = textoLimpio.match(formatoCorto);
+    if (matchCorto) {
+      return `RAD-${matchCorto[1]}`;
     }
     
-    // Si no encuentra el patrón, buscar cualquier texto que contenga "RAD" seguido de números y letras
-    const textoNormalizado = texto.toUpperCase().trim();
-    
-    // Verificar si el texto parece ser un radicado (empieza con RAD y tiene formato similar)
-    if (textoNormalizado.startsWith('RAD-') && textoNormalizado.length >= 15) {
-      return textoNormalizado;
+    // 2. Buscar formato antiguo largo: RAD-YYYYMMDD-XXXX
+    const formatoLargo = /RAD[-\s]?(\d{8})[-\s]?([A-Z0-9]{4})/i;
+    const matchLargo = textoLimpio.match(formatoLargo);
+    if (matchLargo) {
+      return `RAD-${matchLargo[1]}-${matchLargo[2]}`;
     }
     
-    // Buscar cualquier texto que contenga "RAD" seguido de números y letras
-    const radicadoParcialRegex = /rad[-\s]?(\d{8})[-\s]?([a-z0-9]{4})/i;
-    const matchParcial = texto.match(radicadoParcialRegex);
-    
-    if (matchParcial) {
-      return `RAD-${matchParcial[1]}-${matchParcial[2]}`.toUpperCase();
+    // 3. Buscar solo código corto: XXXXXX (6 caracteres alfanuméricos)
+    const soloCodigo = /^([A-Z0-9]{6})$/;
+    const matchSoloCodigo = textoLimpio.match(soloCodigo);
+    if (matchSoloCodigo) {
+      return `RAD-${matchSoloCodigo[1]}`;
     }
     
-    // Intentar extraer cualquier secuencia que parezca un radicado
-    const secuenciaRegex = /([A-Z]{3})[-\s]?(\d{8})[-\s]?([A-Z0-9]{4})/i;
-    const matchSecuencia = texto.match(secuenciaRegex);
+    // 4. Buscar solo código largo: YYYYMMDD-XXXX
+    const soloCodigoLargo = /^(\d{8})[-\s]?([A-Z0-9]{4})$/;
+    const matchSoloCodigoLargo = textoLimpio.match(soloCodigoLargo);
+    if (matchSoloCodigoLargo) {
+      return `RAD-${matchSoloCodigoLargo[1]}-${matchSoloCodigoLargo[2]}`;
+    }
     
-    if (matchSecuencia) {
-      return `${matchSecuencia[1]}-${matchSecuencia[2]}-${matchSecuencia[3]}`.toUpperCase();
+    // 5. Buscar cualquier secuencia que contenga RAD
+    if (textoLimpio.includes('RAD')) {
+      // Extraer todo después de RAD hasta encontrar un espacio o fin de línea
+      const match = textoLimpio.match(/RAD[-\s]?([A-Z0-9-]+)/);
+      if (match && match[1].length >= 6) {
+        return `RAD-${match[1].replace(/-/g, '')}`;
+      }
+    }
+    
+    return null;
+  }
+
+  /**
+   * Extrae una búsqueda parcial del radicado para buscar en la base de datos
+   * Ejemplo: si el usuario envía "4K7M2P" o "K7M2P", retorna eso para hacer LIKE %K7M2P%
+   */
+  extraerBusquedaParcial(texto: string): string | null {
+    const textoLimpio = texto.trim().toUpperCase().replace(/\s+/g, '');
+    
+    // Remover RAD- si existe
+    const sinPrefijo = textoLimpio.replace(/^RAD[-\s]?/, '');
+    
+    // Si tiene al menos 4 caracteres alfanuméricos, es válido para búsqueda
+    if (sinPrefijo.length >= 4 && /[A-Z0-9]{4,}/.test(sinPrefijo)) {
+      return sinPrefijo;
     }
     
     return null;

@@ -1,3 +1,5 @@
+// src/services/whatsapp/templates.ts
+
 import { barberiaConfig } from '../../config/whatsapp';
 
 export const MENSAJES = {
@@ -124,49 +126,79 @@ Por favor seleccione otro horario de la lista disponible.`,
     fecha: string;
     hora: string;
   }) =>
-    `✅ Su cita ha sido agendada exitosamente
+    `✅ *Su cita ha sido agendada exitosamente*
 
-📋 Código de radicado: *${datos.radicado}*
 ✂️ Servicio: ${datos.servicio}
 👤 Barbero: ${datos.barbero}
 📅 Fecha: ${datos.fecha}
 ⏰ Hora: ${datos.hora}
 
-🧑🏾‍🦲 Por favor conserve su código de radicado para cualquier modificación
-💡 *Puede mantener presionado el código de radicado para copiarlo*
+━━━━━━━━━━━━━━━━
+📋 *Código de cita:*
+
+*${datos.radicado}*
+━━━━━━━━━━━━━━━━
+
+💡 _Mantén presionado el código para copiarlo_
+🔖 _Guárdalo para modificar o cancelar tu cita_
 
 ¡Le esperamos! 💈`,
 
   SOLICITAR_RADICADO: () =>
-    `🧑🏾‍🦲 ¿Tiene con usted el código del radicado de la cita que desea cancelar?
+    `🧑🏾‍🦲 Para cancelar su cita necesito el código de radicado
 
-Por favor responda con una de las siguientes opciones:
+¿Tiene con usted el código de su cita?
 
-👉🏾 Sí
-👉🏾 No
+Por favor responda:
+
+👉🏾 Sí (envíeme el código)
+👉🏾 No (buscaré sus citas)
 
 Escribe "cancelar" en cualquier momento para salir del proceso.`,
 
-  SIN_RADICADO: () =>
-    `🧑🏾‍🦲 Desafortunadamente no podemos cancelar una cita si no se tiene su radicado`,
+  SIN_RADICADO_BUSCAR_CITAS: () =>
+    `🧑🏾‍🦲 No hay problema, déjeme buscar sus citas activas...`,
+
+  MOSTRAR_CITAS_ACTIVAS: (citas: Array<{
+    numero: number;
+    radicado: string;
+    servicio: string;
+    fecha: string;
+    hora: string;
+  }>) => {
+    let mensaje = `📋 *Sus citas activas:*\n\n`;
+    
+    citas.forEach(cita => {
+      mensaje += `${cita.numero}. ${cita.servicio}\n`;
+      mensaje += `   📅 ${cita.fecha}\n`;
+      mensaje += `   ⏰ ${cita.hora}\n`;
+      mensaje += `   🔖 ${cita.radicado}\n\n`;
+    });
+    
+    mensaje += `🧑🏾‍🦲 Envíe el *número* de la cita que desea cancelar\n\n`;
+    mensaje += `_O puede copiar y enviar el código de la cita_`;
+    
+    return mensaje;
+  },
+
+  SIN_CITAS_ACTIVAS: () =>
+    `🧑🏾‍🦲 No encontré citas activas asociadas a su número de teléfono
+
+Si está seguro de que tiene una cita, por favor verifique el código de radicado y envíemelo directamente`,
 
   SOLICITAR_CODIGO_RADICADO: () =>
-    `🧑🏾‍🦲 Por favor envíeme el código de radicado de su cita
+    `🧑🏾‍🦲 Por favor envíeme el código de su cita
 
-Ejemplo: RAD-20231021-ABCD
+_Puede copiar el código del mensaje de confirmación_
 
-💡 *Puede mantener presionado el código de radicado en el mensaje anterior y seleccionar "Copiar"*
-
-🔍 *También puede enviar solo una parte del código, como "20231021" o "ABCD", y buscaré su cita*
+💡 También puede enviar solo los números (ej: 123456) y lo buscaré
 
 Escribe "cancelar" en cualquier momento para salir del proceso.`,
 
   RADICADO_NO_ENCONTRADO: () =>
-    `🧑🏾‍🦲 No encontramos ninguna cita con ese código de radicado
+    `🧑🏾‍🦲 No encontré ninguna cita con ese código
 
-Por favor verifique e intente nuevamente
-
-💡 *Asegúrese de copiar el código completo, incluyendo "RAD-" al inicio*
+Por favor verifique e intente nuevamente, o responda "no" para ver sus citas activas
 
 Escribe "cancelar" en cualquier momento para salir del proceso.`,
 
@@ -176,12 +208,12 @@ Escribe "cancelar" en cualquier momento para salir del proceso.`,
     fecha: string;
     hora: string;
   }) =>
-    `⚠️ ¿Está seguro que desea cancelar la siguiente cita?
+    `⚠️ *¿Está seguro que desea cancelar esta cita?*
 
-📋 Radicado: ${datos.radicado}
 ✂️ Servicio: ${datos.servicio}
 📅 Fecha: ${datos.fecha}
 ⏰ Hora: ${datos.hora}
+🔖 Código: ${datos.radicado}
 
 Por favor responda:
 
@@ -191,7 +223,7 @@ Por favor responda:
 Escribe "cancelar" en cualquier momento para salir del proceso.`,
 
   CITA_CANCELADA: () =>
-    `✅ Su cita ha sido cancelada exitosamente
+    `✅ *Su cita ha sido cancelada exitosamente*
 
 🧑🏾‍🦲 Si desea agendar una nueva cita, puede escribirnos cuando guste`,
 
@@ -217,7 +249,6 @@ export const formatearPrecio = (precio: number): string => {
 };
 
 export const formatearFecha = (fecha: Date): string => {
-  // Asegurarnos de que estamos usando la zona horaria local
   const fechaLocal = new Date(fecha);
   
   const opciones: Intl.DateTimeFormatOptions = {
@@ -225,7 +256,7 @@ export const formatearFecha = (fecha: Date): string => {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
-    timeZone: 'America/Bogota' // O tu zona horaria local
+    timeZone: 'America/Bogota'
   };
   
   return fechaLocal.toLocaleDateString('es-CO', opciones);
@@ -239,10 +270,18 @@ export const formatearHora = (hora: string): string => {
   return `${horas12}:${mm} ${periodo}`;
 };
 
+/**
+ * Genera un radicado corto y fácil de copiar
+ * Formato: RAD-XXXXXX (donde X son 6 caracteres alfanuméricos)
+ * Ejemplo: RAD-4K7M2P
+ */
 export const generarRadicado = (): string => {
-  const fecha = new Date().toISOString().split('T')[0].replace(/-/g, '');
-  const random = Math.random().toString(36).substring(2, 6).toUpperCase();
-  return `RAD-${fecha}-${random}`;
+  const timestamp = Date.now().toString();
+  // Tomar los últimos 6 dígitos del timestamp
+  const numeros = timestamp.slice(-6);
+  // Convertir a base 36 para hacerlo más corto y agregar letras
+  const codigo = parseInt(numeros).toString(36).toUpperCase().padStart(6, '0');
+  return `RAD-${codigo}`;
 };
 
 export const validarNombreCompleto = (nombre: string): boolean => {

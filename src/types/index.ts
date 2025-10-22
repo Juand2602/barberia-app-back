@@ -38,11 +38,12 @@ export type ConversationState =
   | 'ESPERANDO_HORA'
   | 'ESPERANDO_CONFIRMACION'
   | 'ESPERANDO_RADICADO'
+  | 'ESPERANDO_SELECCION_CITA_CANCELAR' // ← NUEVO ESTADO
   | 'ESPERANDO_CONFIRMACION_CANCELACION'
   | 'ESPERANDO_RESPUESTA_UBICACION'
   | 'ESPERANDO_RESPUESTA_LISTA_PRECIOS'
   | 'ESPERANDO_RESPUESTA_DESPUES_CITA'
-  | 'ESPERANDO_RESPUESTA_NO_HAY_HORARIOS' // ← NUEVO ESTADO
+  | 'ESPERANDO_RESPUESTA_NO_HAY_HORARIOS'
   | 'COMPLETADA';
 
 export interface ConversationContext {
@@ -57,5 +58,12 @@ export interface ConversationContext {
   citaId?: string;
   horariosDisponibles?: Array<{ numero: number; hora: string }>;
   horariosRaw?: string[];
+  citasDisponibles?: Array<{ // ← NUEVO CAMPO
+    numero: number;
+    radicado: string;
+    servicio: string;
+    fecha: string;
+    hora: string;
+  }>;
   flujo?: string;
 }
