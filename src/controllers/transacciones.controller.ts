@@ -1,4 +1,4 @@
-// src/controllers/transacciones.controller.ts (Nuevo Backend - CORREGIDO)
+// src/controllers/transacciones.controller.ts - MEJORADO
 
 import { Request, Response } from 'express';
 import { transaccionesService } from '../services/transacciones.service';
@@ -12,30 +12,22 @@ export class TransaccionesController {
         fechaFin,
         tipo,
         metodoPago,
+        estadoPago,
         empleadoId,
         clienteId,
+        citaId,
       } = req.query;
 
       const filters: any = {};
 
-      if (fechaInicio) {
-        filters.fechaInicio = new Date(fechaInicio as string);
-      }
-      if (fechaFin) {
-        filters.fechaFin = new Date(fechaFin as string);
-      }
-      if (tipo) {
-        filters.tipo = tipo as string;
-      }
-      if (metodoPago) {
-        filters.metodoPago = metodoPago as string;
-      }
-      if (empleadoId) {
-        filters.empleadoId = empleadoId as string;
-      }
-      if (clienteId) {
-        filters.clienteId = clienteId as string;
-      }
+      if (fechaInicio) filters.fechaInicio = new Date(fechaInicio as string);
+      if (fechaFin) filters.fechaFin = new Date(fechaFin as string);
+      if (tipo) filters.tipo = tipo as string;
+      if (metodoPago) filters.metodoPago = metodoPago as string;
+      if (estadoPago) filters.estadoPago = estadoPago as string;
+      if (empleadoId) filters.empleadoId = empleadoId as string;
+      if (clienteId) filters.clienteId = clienteId as string;
+      if (citaId) filters.citaId = citaId as string;
 
       const transacciones = await transaccionesService.getAll(filters);
 
@@ -53,20 +45,20 @@ export class TransaccionesController {
     }
   }
 
-  // GET /api/transacciones/fecha/:fecha
-  async getByFecha(req: Request, res: Response) {
+  // GET /api/transacciones/pendientes
+  async getPendientes(req: Request, res: Response) {
     try {
-      const { fecha } = req.params;
-      const transacciones = await transaccionesService.getByFecha(new Date(fecha));
+      const pendientes = await transaccionesService.obtenerPendientes();
 
       res.json({
         success: true,
-        data: transacciones,
+        data: pendientes,
+        total: pendientes.length,
       });
     } catch (error: any) {
       res.status(500).json({
         success: false,
-        message: 'Error al obtener transacciones',
+        message: 'Error al obtener transacciones pendientes',
         error: error.message,
       });
     }
@@ -95,53 +87,6 @@ export class TransaccionesController {
     }
   }
 
-  // GET /api/transacciones/servicios-mas-vendidos
-  async getServiciosMasVendidos(req: Request, res: Response) {
-    try {
-      const { limite, fechaInicio, fechaFin } = req.query;
-
-      const servicios = await transaccionesService.getServiciosMasVendidos(
-        limite ? parseInt(limite as string) : 10,
-        fechaInicio ? new Date(fechaInicio as string) : undefined,
-        fechaFin ? new Date(fechaFin as string) : undefined
-      );
-
-      res.json({
-        success: true,
-        data: servicios,
-      });
-    } catch (error: any) {
-      res.status(500).json({
-        success: false,
-        message: 'Error al obtener servicios más vendidos',
-        error: error.message,
-      });
-    }
-  }
-
-  // GET /api/transacciones/ingresos-por-empleado
-  async getIngresosPorEmpleado(req: Request, res: Response) {
-    try {
-      const { fechaInicio, fechaFin } = req.query;
-
-      const ingresos = await transaccionesService.getIngresosPorEmpleado(
-        fechaInicio ? new Date(fechaInicio as string) : undefined,
-        fechaFin ? new Date(fechaFin as string) : undefined
-      );
-
-      res.json({
-        success: true,
-        data: ingresos,
-      });
-    } catch (error: any) {
-      res.status(500).json({
-        success: false,
-        message: 'Error al obtener ingresos por empleado',
-        error: error.message,
-      });
-    }
-  }
-
   // GET /api/transacciones/:id
   async getById(req: Request, res: Response) {
     try {
@@ -154,6 +99,31 @@ export class TransaccionesController {
       });
     } catch (error: any) {
       res.status(404).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  }
+
+  // GET /api/transacciones/cita/:citaId
+  async getByCitaId(req: Request, res: Response) {
+    try {
+      const { citaId } = req.params;
+      const transaccion = await transaccionesService.obtenerPorCitaId(citaId);
+
+      if (!transaccion) {
+        return res.status(404).json({
+          success: false,
+          message: 'No se encontró transacción para esta cita',
+        });
+      }
+
+      res.json({
+        success: true,
+        data: transaccion,
+      });
+    } catch (error: any) {
+      res.status(500).json({
         success: false,
         message: error.message,
       });
@@ -185,15 +155,27 @@ export class TransaccionesController {
     }
   }
 
-  // POST /api/transacciones/desde-cita/:citaId
-  async registrarDesdeCita(req: Request, res: Response) {
+  // POST /api/transacciones/:id/marcar-pagada
+  async marcarComoPagada(req: Request, res: Response) {
     try {
-      const { citaId } = req.params;
-      const transaccion = await transaccionesService.registrarVentaDesdeCita(citaId);
+      const { id } = req.params;
+      const { metodoPago, referencia } = req.body;
 
-      res.status(201).json({
+      if (!metodoPago || !['EFECTIVO', 'TRANSFERENCIA'].includes(metodoPago)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Método de pago inválido. Debe ser EFECTIVO o TRANSFERENCIA',
+        });
+      }
+
+      const transaccion = await transaccionesService.marcarComoPagada(id, {
+        metodoPago,
+        referencia,
+      });
+
+      res.json({
         success: true,
-        message: 'Venta registrada exitosamente desde cita',
+        message: 'Transacción marcada como pagada y cita completada',
         data: transaccion,
       });
     } catch (error: any) {

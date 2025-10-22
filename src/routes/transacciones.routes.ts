@@ -1,22 +1,22 @@
-// src/routes/transacciones.routes.ts (Nuevo Backend - CORREGIDO)
+// src/routes/transacciones.routes.ts
 
 import { Router } from 'express';
 import { transaccionesController } from '../controllers/transacciones.controller';
 
 const router = Router();
 
-// Rutas especiales primero
-router.get('/estadisticas', (req, res) => transaccionesController.getEstadisticas(req, res));
-router.get('/servicios-mas-vendidos', (req, res) => transaccionesController.getServiciosMasVendidos(req, res));
-router.get('/ingresos-por-empleado', (req, res) => transaccionesController.getIngresosPorEmpleado(req, res));
-router.get('/fecha/:fecha', (req, res) => transaccionesController.getByFecha(req, res));
-router.post('/desde-cita/:citaId', (req, res) => transaccionesController.registrarDesdeCita(req, res));
+// Rutas de transacciones
+router.get('/', transaccionesController.getAll.bind(transaccionesController));
+router.get('/pendientes', transaccionesController.getPendientes.bind(transaccionesController));
+router.get('/estadisticas', transaccionesController.getEstadisticas.bind(transaccionesController));
+router.get('/cita/:citaId', transaccionesController.getByCitaId.bind(transaccionesController));
+router.get('/:id', transaccionesController.getById.bind(transaccionesController));
 
-// Rutas CRUD
-router.get('/', (req, res) => transaccionesController.getAll(req, res));
-router.get('/:id', (req, res) => transaccionesController.getById(req, res));
-router.post('/', (req, res) => transaccionesController.create(req, res));
-router.put('/:id', (req, res) => transaccionesController.update(req, res));
-router.delete('/:id', (req, res) => transaccionesController.delete(req, res));
+router.post('/', transaccionesController.create.bind(transaccionesController));
+router.post('/:id/marcar-pagada', transaccionesController.marcarComoPagada.bind(transaccionesController));
+
+router.put('/:id', transaccionesController.update.bind(transaccionesController));
+
+router.delete('/:id', transaccionesController.delete.bind(transaccionesController));
 
 export default router;

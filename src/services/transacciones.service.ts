@@ -1,12 +1,6 @@
-// src/services/transacciones.service.ts (Nuevo Backend - CORREGIDO)
+// src/services/transacciones.service.ts - MEJORADO
 
-import { PrismaClient } from '@prisma/client';
-import { CitasService } from './citas.service';
-import { ServiciosService } from './servicios.service';
-
-const prisma = new PrismaClient();
-const citasService = new CitasService();
-const serviciosService = new ServiciosService();
+import prisma from '../config/database';
 
 export class TransaccionesService {
   // Obtener todas las transacciones con filtros
@@ -15,37 +9,26 @@ export class TransaccionesService {
     fechaFin?: Date;
     tipo?: string;
     metodoPago?: string;
+    estadoPago?: string;
     empleadoId?: string;
     clienteId?: string;
+    citaId?: string;
   }) {
     const where: any = {};
 
     if (filters) {
       if (filters.fechaInicio || filters.fechaFin) {
         where.fecha = {};
-        if (filters.fechaInicio) {
-          where.fecha.gte = filters.fechaInicio;
-        }
-        if (filters.fechaFin) {
-          where.fecha.lte = filters.fechaFin;
-        }
+        if (filters.fechaInicio) where.fecha.gte = filters.fechaInicio;
+        if (filters.fechaFin) where.fecha.lte = filters.fechaFin;
       }
 
-      if (filters.tipo) {
-        where.tipo = filters.tipo;
-      }
-
-      if (filters.metodoPago) {
-        where.metodoPago = filters.metodoPago;
-      }
-
-      if (filters.empleadoId) {
-        where.empleadoId = filters.empleadoId;
-      }
-
-      if (filters.clienteId) {
-        where.clienteId = filters.clienteId;
-      }
+      if (filters.tipo) where.tipo = filters.tipo;
+      if (filters.metodoPago) where.metodoPago = filters.metodoPago;
+      if (filters.estadoPago) where.estadoPago = filters.estadoPago;
+      if (filters.empleadoId) where.empleadoId = filters.empleadoId;
+      if (filters.clienteId) where.clienteId = filters.clienteId;
+      if (filters.citaId) where.citaId = filters.citaId;
     }
 
     const transacciones = await prisma.transaccion.findMany({
@@ -53,6 +36,7 @@ export class TransaccionesService {
       include: {
         cliente: true,
         empleado: true,
+        cita: true,
         items: {
           include: {
             servicio: true,
@@ -65,20 +49,6 @@ export class TransaccionesService {
     return transacciones;
   }
 
-  // Obtener transacciones por fecha
-  async getByFecha(fecha: Date) {
-    const inicioDia = new Date(fecha);
-    inicioDia.setHours(0, 0, 0, 0);
-
-    const finDia = new Date(fecha);
-    finDia.setHours(23, 59, 59, 999);
-
-    return this.getAll({
-      fechaInicio: inicioDia,
-      fechaFin: finDia,
-    });
-  }
-
   // Obtener una transacción por ID
   async getById(id: string) {
     const transaccion = await prisma.transaccion.findUnique({
@@ -86,6 +56,7 @@ export class TransaccionesService {
       include: {
         cliente: true,
         empleado: true,
+        cita: true,
         items: {
           include: {
             servicio: true,
@@ -113,18 +84,7 @@ export class TransaccionesService {
       throw new Error('Los egresos requieren un concepto');
     }
 
-    // Validar que el total coincida con la suma de items
-    const totalCalculado = Array.isArray(data.items)
-      ? data.items.reduce((sum: number, item: any) => sum + Number(item.subtotal || 0), 0)
-      : 0;
-
-    if (Array.isArray(data.items) && data.items.length > 0) {
-      if (Math.abs(totalCalculado - Number(data.total)) > 0.01) {
-        throw new Error('El total no coincide con la suma de los items');
-      }
-    }
-
-    // Preparar items para crear con la estructura que Prisma espera
+    // Preparar items
     const itemsToCreate =
       Array.isArray(data.items) && data.items.length > 0
         ? data.items.map((it: any) => {
@@ -140,15 +100,17 @@ export class TransaccionesService {
           })
         : [];
 
-    // Crear la transacción con sus items
+    // Crear la transacción
     const transaccion = await prisma.transaccion.create({
       data: {
         tipo: data.tipo,
         clienteId: data.clienteId || null,
         empleadoId: data.empleadoId || null,
+        citaId: data.citaId || null,
         fecha: data.fecha ? new Date(data.fecha) : new Date(),
         total: data.total,
         metodoPago: data.metodoPago,
+        estadoPago: data.estadoPago || 'PENDIENTE',
         referencia: data.referencia || null,
         concepto: data.concepto || null,
         categoria: data.categoria || null,
@@ -158,6 +120,7 @@ export class TransaccionesService {
       include: {
         cliente: true,
         empleado: true,
+        cita: true,
         items: { include: { servicio: true } },
       },
     });
@@ -167,7 +130,7 @@ export class TransaccionesService {
 
   // Actualizar una transacción
   async update(id: string, data: any) {
-    await this.getById(id); // Verificar que existe
+    await this.getById(id);
 
     const transaccion = await prisma.transaccion.update({
       where: { id },
@@ -175,9 +138,11 @@ export class TransaccionesService {
         ...(data.tipo && { tipo: data.tipo }),
         ...(data.clienteId !== undefined && { clienteId: data.clienteId }),
         ...(data.empleadoId !== undefined && { empleadoId: data.empleadoId }),
+        ...(data.citaId !== undefined && { citaId: data.citaId }),
         ...(data.fecha && { fecha: new Date(data.fecha) }),
         ...(data.total && { total: data.total }),
         ...(data.metodoPago && { metodoPago: data.metodoPago }),
+        ...(data.estadoPago && { estadoPago: data.estadoPago }),
         ...(data.referencia !== undefined && { referencia: data.referencia }),
         ...(data.concepto !== undefined && { concepto: data.concepto }),
         ...(data.categoria !== undefined && { categoria: data.categoria }),
@@ -186,6 +151,7 @@ export class TransaccionesService {
       include: {
         cliente: true,
         empleado: true,
+        cita: true,
         items: { include: { servicio: true } },
       },
     });
@@ -195,7 +161,7 @@ export class TransaccionesService {
 
   // Eliminar una transacción
   async delete(id: string) {
-    await this.getById(id); // Verificar que existe
+    await this.getById(id);
     await prisma.transaccion.delete({ where: { id } });
   }
 
@@ -213,12 +179,16 @@ export class TransaccionesService {
       totalEgresos,
       totalEfectivo,
       totalTransferencias,
+      totalPagado,
+      totalPendiente,
       totalTransacciones,
     ] = await Promise.all([
       prisma.transaccion.aggregate({ where: { ...where, tipo: 'INGRESO' }, _sum: { total: true }, _count: true }),
       prisma.transaccion.aggregate({ where: { ...where, tipo: 'EGRESO' }, _sum: { total: true }, _count: true }),
       prisma.transaccion.aggregate({ where: { ...where, metodoPago: 'EFECTIVO' }, _sum: { total: true } }),
       prisma.transaccion.aggregate({ where: { ...where, metodoPago: 'TRANSFERENCIA' }, _sum: { total: true } }),
+      prisma.transaccion.aggregate({ where: { ...where, estadoPago: 'PAGADO' }, _sum: { total: true } }),
+      prisma.transaccion.aggregate({ where: { ...where, estadoPago: 'PENDIENTE' }, _sum: { total: true } }),
       prisma.transaccion.count({ where }),
     ]);
 
@@ -235,103 +205,119 @@ export class TransaccionesService {
       balance,
       totalEfectivo: totalEfectivo._sum.total || 0,
       totalTransferencias: totalTransferencias._sum.total || 0,
+      totalPagado: totalPagado._sum.total || 0,
+      totalPendiente: totalPendiente._sum.total || 0,
     };
   }
 
-  // Obtener servicios más vendidos
-  async getServiciosMasVendidos(limite: number = 10, fechaInicio?: Date, fechaFin?: Date) {
-    const where: any = { tipo: 'INGRESO' };
-    if (fechaInicio || fechaFin) {
-      where.fecha = {};
-      if (fechaInicio) where.fecha.gte = fechaInicio;
-      if (fechaFin) where.fecha.lte = fechaFin;
+  // --- MÉTODOS PARA GESTIÓN DE PAGOS Y CITAS ---
+
+  /**
+   * Crea una transacción pendiente automáticamente al crear una cita
+   */
+  async crearTransaccionDesdeCita(citaData: {
+    citaId: string;
+    clienteId: string;
+    empleadoId: string;
+    servicioId: string;
+    servicioNombre: string;
+    precio: number;
+    fecha: Date;
+  }) {
+    try {
+      const transaccion = await this.create({
+        tipo: 'INGRESO',
+        clienteId: citaData.clienteId,
+        empleadoId: citaData.empleadoId,
+        citaId: citaData.citaId,
+        fecha: citaData.fecha,
+        total: citaData.precio,
+        metodoPago: 'PENDIENTE',
+        estadoPago: 'PENDIENTE',
+        concepto: `Cita: ${citaData.servicioNombre}`,
+        notas: 'Transacción creada automáticamente desde cita de WhatsApp',
+        items: [
+          {
+            servicioId: citaData.servicioId,
+            cantidad: 1,
+            precioUnitario: citaData.precio,
+            subtotal: citaData.precio,
+          },
+        ],
+      });
+
+      console.log(`✅ Transacción pendiente creada para cita ${citaData.citaId}`);
+      return transaccion;
+    } catch (error) {
+      console.error('Error creando transacción desde cita:', error);
+      throw error;
     }
-
-    const items = await prisma.transaccionItem.findMany({
-      where: { transaccion: where },
-      include: { servicio: true },
-    });
-
-    const serviciosMap = new Map();
-    items.forEach(item => {
-      const key = item.servicioId;
-      if (serviciosMap.has(key)) {
-        const existing = serviciosMap.get(key);
-        existing.cantidad += item.cantidad;
-        existing.total += item.subtotal;
-      } else {
-        serviciosMap.set(key, {
-          servicioId: item.servicioId,
-          nombre: item.servicio.nombre,
-          cantidad: item.cantidad,
-          total: item.subtotal,
-        });
-      }
-    });
-
-    return Array.from(serviciosMap.values())
-      .sort((a, b) => b.cantidad - a.cantidad)
-      .slice(0, limite);
   }
 
-  // Obtener ingresos por empleado
-  async getIngresosPorEmpleado(fechaInicio?: Date, fechaFin?: Date) {
-    const where: any = { tipo: 'INGRESO', empleadoId: { not: null } };
-    if (fechaInicio || fechaFin) {
-      where.fecha = {};
-      if (fechaInicio) where.fecha.gte = fechaInicio;
-      if (fechaFin) where.fecha.lte = fechaFin;
-    }
+  /**
+   * Marca una transacción como pagada y actualiza la cita a COMPLETADA
+   */
+  async marcarComoPagada(transaccionId: string, datos: {
+    metodoPago: 'EFECTIVO' | 'TRANSFERENCIA';
+    referencia?: string;
+  }) {
+    try {
+      // Obtener la transacción
+      const transaccion = await this.getById(transaccionId);
 
-    const transacciones = await prisma.transaccion.findMany({
-      where,
-      include: { empleado: true },
-    });
-
-    const empleadosMap = new Map();
-    transacciones.forEach(trans => {
-      if (!trans.empleadoId || !trans.empleado) return;
-      const key = trans.empleadoId;
-      if (empleadosMap.has(key)) {
-        const existing = empleadosMap.get(key);
-        existing.totalTransacciones += 1;
-        existing.totalIngresos += trans.total;
-      } else {
-        empleadosMap.set(key, {
-          empleadoId: trans.empleadoId,
-          nombre: trans.empleado.nombre,
-          totalTransacciones: 1,
-          totalIngresos: trans.total,
-        });
+      if (transaccion.estadoPago === 'PAGADO') {
+        throw new Error('La transacción ya está marcada como pagada');
       }
-    });
 
-    return Array.from(empleadosMap.values())
-      .sort((a, b) => b.totalIngresos - a.totalIngresos);
+      // Actualizar transacción
+      const transaccionActualizada = await this.update(transaccionId, {
+        estadoPago: 'PAGADO',
+        metodoPago: datos.metodoPago,
+        referencia: datos.referencia || null,
+      });
+
+      // Si la transacción está ligada a una cita, marcar la cita como COMPLETADA
+      if (transaccion.citaId) {
+        await prisma.cita.update({
+          where: { id: transaccion.citaId },
+          data: { estado: 'COMPLETADA' },
+        });
+
+        console.log(`✅ Cita ${transaccion.citaId} marcada como COMPLETADA`);
+      }
+
+      console.log(`✅ Transacción ${transaccionId} marcada como PAGADA`);
+      return transaccionActualizada;
+    } catch (error) {
+      console.error('Error marcando transacción como pagada:', error);
+      throw error;
+    }
   }
 
-  // --- MÉTODO AUXILIAR PARA EL BOT DE WHATSAPP ---
-  async registrarVentaDesdeCita(citaId: string) {
-    const cita = await citasService.getById(citaId);
-    if (!cita) throw new Error('Cita no encontrada');
-    if (cita.estado !== 'COMPLETADA') throw new Error('Solo se pueden registrar ventas de citas completadas');
-
-    // Línea CORREGIDA Y TIPEADA
-  // Línea CORREGIDA
-  const servicios = await serviciosService.listarTodos();
-  const servicio = servicios.find((ser: any) => ser.nombre === cita.servicioNombre);
-    if (!servicio) throw new Error(`Servicio "${cita.servicioNombre}" no encontrado`);
-
-    return this.create({
-      tipo: 'INGRESO',
-      clienteId: cita.clienteId,
-      empleadoId: cita.empleadoId,
-      fecha: cita.fechaHora.toISOString(),
-      total: servicio.precio,
-      metodoPago: 'EFECTIVO',
-      notas: `Generado automáticamente desde cita ${citaId}`,
-      items: [{ servicioId: servicio.id, cantidad: 1, precioUnitario: servicio.precio, subtotal: servicio.precio }],
+  /**
+   * Obtiene la transacción asociada a una cita
+   */
+  async obtenerPorCitaId(citaId: string) {
+    return prisma.transaccion.findFirst({
+      where: { citaId },
+      include: {
+        cliente: true,
+        empleado: true,
+        cita: true,
+        items: {
+          include: {
+            servicio: true,
+          },
+        },
+      },
     });
+  }
+
+  /**
+   * Obtiene todas las transacciones pendientes
+   */
+  async obtenerPendientes() {
+    return this.getAll({ estadoPago: 'PENDIENTE' });
   }
 }
 

@@ -1,4 +1,4 @@
-// src/services/clientes.service.ts (Nuevo Backend - CORREGIDO Y COMPLETO)
+// src/services/clientes.service.ts - MEJORADO
 
 import prisma from '../config/database';
 
@@ -70,7 +70,6 @@ export class ClientesService {
 
   // Crear un nuevo cliente
   async create(data: any) {
-    // 1. Validaciones
     if (!data.nombre || typeof data.nombre !== 'string' || data.nombre.trim() === '') {
       throw new Error('El nombre del cliente es obligatorio y no puede estar vacío.');
     }
@@ -81,7 +80,6 @@ export class ClientesService {
     const nombreNormalizado = data.nombre.trim();
     const telefonoNormalizado = data.telefono.trim();
 
-    // 2. Verificar si el teléfono ya existe
     const existente = await prisma.cliente.findUnique({
       where: { telefono: telefonoNormalizado },
     });
@@ -90,7 +88,6 @@ export class ClientesService {
       throw new Error('Ya existe un cliente con ese número de teléfono');
     }
 
-    // 3. Crear el cliente
     const cliente = await prisma.cliente.create({
       data: {
         nombre: nombreNormalizado,
@@ -105,7 +102,6 @@ export class ClientesService {
 
   // Actualizar un cliente
   async update(id: string, data: any) {
-    // Validaciones si se proporcionan los datos
     if (data.nombre !== undefined && data.nombre.trim() === '') {
       throw new Error('El nombre, si se proporciona, no puede estar vacío.');
     }
@@ -113,7 +109,6 @@ export class ClientesService {
       throw new Error('El teléfono, si se proporciona, no puede estar vacío.');
     }
 
-    // Si se está actualizando el teléfono, verificar que no exista
     if (data.telefono) {
       const existente = await prisma.cliente.findFirst({
         where: {
@@ -176,8 +171,7 @@ export class ClientesService {
   // --- MÉTODOS AUXILIARES PARA EL BOT DE WHATSAPP ---
 
   /**
-   * Busca un cliente por su número de teléfono.
-   * Usado por el bot de WhatsApp.
+   * Busca un cliente por su número de teléfono
    */
   async buscarPorTelefono(telefono: string) {
     return prisma.cliente.findUnique({
@@ -186,11 +180,9 @@ export class ClientesService {
   }
 
   /**
-   * Crea un nuevo cliente con datos mínimos.
-   * Usado por el bot de WhatsApp.
+   * Crea un nuevo cliente con datos mínimos
    */
   async crear(data: { nombre: string; telefono: string; email?: string }) {
-    // Reutilizamos las validaciones del método create principal
     if (!data.nombre || data.nombre.trim() === '') {
       throw new Error('El nombre del cliente es obligatorio.');
     }
@@ -211,14 +203,72 @@ export class ClientesService {
   }
 
   /**
-   * Busca un cliente por teléfono, y si no lo encuentra, lo crea.
-   * Usado por el bot de WhatsApp.
+   * Determina si un nombre nuevo es más completo que el anterior
+   * @param nombreAnterior Nombre actual en BD
+   * @param nombreNuevo Nombre proporcionado por el usuario
+   * @returns true si el nuevo nombre es más completo
+   */
+  private esNombreMasCompleto(nombreAnterior: string, nombreNuevo: string): boolean {
+    const anteriorNormalizado = nombreAnterior.toLowerCase().trim();
+    const nuevoNormalizado = nombreNuevo.toLowerCase().trim();
+    
+    // Nombres genéricos que siempre deben ser reemplazados
+    const nombresGenericos = ['cliente whatsapp', 'cliente', 'usuario', 'user', 'sin nombre'];
+    if (nombresGenericos.includes(anteriorNormalizado)) {
+      return true;
+    }
+    
+    // Si el nuevo nombre es genérico, NO actualizar
+    if (nombresGenericos.includes(nuevoNormalizado)) {
+      return false;
+    }
+    
+    // Contar palabras (aproximación simple de nombre completo)
+    const palabrasAnterior = anteriorNormalizado.split(/\s+/).filter(p => p.length >= 2);
+    const palabrasNuevo = nuevoNormalizado.split(/\s+/).filter(p => p.length >= 2);
+    
+    // Si el nuevo tiene más palabras y contiene el anterior, es más completo
+    if (palabrasNuevo.length > palabrasAnterior.length) {
+      // Verificar que el nuevo nombre contiene todas las palabras del anterior
+      const todasContenidas = palabrasAnterior.every(palabra => 
+        nuevoNormalizado.includes(palabra)
+      );
+      
+      if (todasContenidas) {
+        return true;
+      }
+    }
+    
+    // Si tienen el mismo número de palabras pero el nuevo es más largo
+    if (palabrasNuevo.length === palabrasAnterior.length && 
+        nuevoNormalizado.length > anteriorNormalizado.length + 3) {
+      return true;
+    }
+    
+    return false;
+  }
+
+  /**
+   * Busca un cliente por teléfono y lo crea o actualiza inteligentemente
+   * @param telefono Número de teléfono del cliente
+   * @param nombre Nombre proporcionado
+   * @returns Cliente encontrado o creado
    */
   async obtenerOCrear(telefono: string, nombre?: string) {
     let cliente = await this.buscarPorTelefono(telefono);
     
     if (!cliente && nombre) {
+      // Cliente no existe, crear uno nuevo
       cliente = await this.crear({ nombre, telefono });
+      console.log(`✅ Cliente creado: ${nombre} (${telefono})`);
+    } else if (cliente && nombre) {
+      // Cliente existe, verificar si actualizar nombre
+      if (this.esNombreMasCompleto(cliente.nombre, nombre)) {
+        cliente = await this.update(cliente.id, { nombre });
+        console.log(`✅ Nombre actualizado: ${cliente.nombre} → ${nombre}`);
+      } else {
+        console.log(`ℹ️ Nombre conservado: ${cliente.nombre} (nuevo: ${nombre})`);
+      }
     }
     
     return cliente;

@@ -1,7 +1,9 @@
-// src/services/citas.service.ts (CORREGIDO - Considera duración de citas)
+// src/services/citas.service.ts - MEJORADO CON TRANSACCIONES
 
 import prisma from '../config/database';
 import { empleadosService } from './empleados.service';
+import { transaccionesService } from './transacciones.service';
+import { serviciosService } from './servicios.service';
 
 export class CitasService {
   // Obtener todas las citas con filtros
@@ -179,6 +181,9 @@ export class CitasService {
       throw new Error('Cliente no encontrado');
     }
 
+    // Determinar el estado inicial según el origen
+    const estadoInicial = data.origen === 'WHATSAPP' ? 'CONFIRMADA' : 'PENDIENTE';
+
     // Crear la cita
     const cita = await prisma.cita.create({
       data: {
@@ -190,13 +195,37 @@ export class CitasService {
         duracionMinutos: data.duracionMinutos,
         origen: data.origen || 'MANUAL',
         notas: data.notas || null,
-        estado: 'PENDIENTE',
+        estado: estadoInicial,
       },
       include: {
         cliente: true,
         empleado: true,
       },
     });
+
+    // Crear transacción pendiente automáticamente
+    try {
+      // Buscar el servicio para obtener su ID y precio
+      const servicios = await serviciosService.listarActivos();
+      const servicio = servicios.find((s: any) => s.nombre === data.servicioNombre);
+
+      if (servicio) {
+        await transaccionesService.crearTransaccionDesdeCita({
+          citaId: cita.id,
+          clienteId: cita.clienteId,
+          empleadoId: cita.empleadoId,
+          servicioId: servicio.id,
+          servicioNombre: servicio.nombre,
+          precio: servicio.precio,
+          fecha: fechaHora,
+        });
+      } else {
+        console.warn(`⚠️ No se encontró el servicio "${data.servicioNombre}" para crear la transacción`);
+      }
+    } catch (error) {
+      console.error('Error creando transacción automática:', error);
+      // No lanzar error para no fallar la creación de la cita
+    }
 
     return cita;
   }
@@ -285,6 +314,19 @@ export class CitasService {
       },
     });
 
+    // Si se cancela la cita, cancelar/eliminar la transacción pendiente
+    if (data.estado === 'CANCELADA') {
+      try {
+        const transaccion = await transaccionesService.obtenerPorCitaId(id);
+        if (transaccion && transaccion.estadoPago === 'PENDIENTE') {
+          await transaccionesService.delete(transaccion.id);
+          console.log(`✅ Transacción pendiente eliminada para cita cancelada ${id}`);
+        }
+      } catch (error) {
+        console.error('Error eliminando transacción de cita cancelada:', error);
+      }
+    }
+
     return citaActualizada;
   }
 
@@ -294,6 +336,16 @@ export class CitasService {
 
     if (cita.estado === 'COMPLETADA') {
       throw new Error('No se puede eliminar una cita completada');
+    }
+
+    // Eliminar transacción pendiente asociada
+    try {
+      const transaccion = await transaccionesService.obtenerPorCitaId(id);
+      if (transaccion && transaccion.estadoPago === 'PENDIENTE') {
+        await transaccionesService.delete(transaccion.id);
+      }
+    } catch (error) {
+      console.error('Error eliminando transacción al borrar cita:', error);
     }
 
     await prisma.cita.delete({
@@ -375,21 +427,32 @@ export class CitasService {
    * Cancela una cita por su radicado.
    */
   async cancelar(radicado: string) {
-    return prisma.cita.update({
+    const cita = await prisma.cita.update({
       where: { radicado },
       data: {
         estado: 'CANCELADA',
         motivoCancelacion: 'Cancelado por WhatsApp',
       },
     });
+
+    // Eliminar transacción pendiente asociada
+    try {
+      const transaccion = await transaccionesService.obtenerPorCitaId(cita.id);
+      if (transaccion && transaccion.estadoPago === 'PENDIENTE') {
+        await transaccionesService.delete(transaccion.id);
+        console.log(`✅ Transacción pendiente eliminada para cita cancelada ${cita.id}`);
+      }
+    } catch (error) {
+      console.error('Error eliminando transacción:', error);
+    }
+
+    return cita;
   }
 
   /**
    * Calcula los horarios disponibles considerando la duración de cada cita.
-   * CORREGIDO: Ahora verifica rangos de tiempo ocupados, no solo horas de inicio.
    */
   async calcularHorariosDisponibles(empleadoId: string, fecha: Date, duracionMinutos: number = 30) {
-    // Obtener citas activas del día
     const citasExistentes = await this.getByFecha(fecha, empleadoId).then(citas => 
       citas.filter(c => ['PENDIENTE', 'CONFIRMADA'].includes(c.estado))
     );
@@ -397,7 +460,6 @@ export class CitasService {
     const empleado = await empleadosService.getById(empleadoId);
     if (!empleado) return [];
 
-    // Obtener horario laboral del día
     const diaSemana = fecha.getDay();
     const diasMap: any = {
       0: 'horarioDomingo', 1: 'horarioLunes', 2: 'horarioMartes',
@@ -436,11 +498,7 @@ export class CitasService {
       const inicioSlot = h * 60 + m;
       const finSlot = inicioSlot + duracionMinutos;
 
-      // Verificar que el slot no se solape con ninguna cita existente
       return !rangosOcupados.some(rango => {
-        // Hay solapamiento si:
-        // - El slot comienza antes de que termine la cita Y
-        // - El slot termina después de que comience la cita
         return inicioSlot < rango.fin && finSlot > rango.inicio;
       });
     });
@@ -452,7 +510,6 @@ export class CitasService {
   async verificarCitaExistente(empleadoId: string, fechaHora: Date, duracionMinutos: number) {
     const finServicio = new Date(fechaHora.getTime() + duracionMinutos * 60000);
     
-    // Obtener todas las citas del empleado para ese día
     const inicioDia = new Date(fechaHora);
     inicioDia.setHours(0, 0, 0, 0);
     
@@ -470,15 +527,11 @@ export class CitasService {
       },
     });
     
-    // Verificar si alguna de las citas existentes se solapa con la nueva cita
     for (const citaExistente of citasDelDia) {
       const finCitaExistente = new Date(
         citaExistente.fechaHora.getTime() + citaExistente.duracionMinutos * 60000
       );
       
-      // Hay solapamiento si:
-      // - La nueva cita comienza antes de que termine la cita existente Y
-      // - La nueva cita termina después de que comience la cita existente
       if (fechaHora < finCitaExistente && finServicio > citaExistente.fechaHora) {
         return citaExistente;
       }

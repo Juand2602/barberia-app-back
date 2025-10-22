@@ -87,6 +87,7 @@ model Cita {
   
   cliente         Cliente  @relation(fields: [clienteId], references: [id])
   empleado        Empleado @relation(fields: [empleadoId], references: [id])
+  transacciones   Transaccion[] // ← NUEVA RELACIÓN
   
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -122,9 +123,11 @@ model Transaccion {
   tipo            String   // INGRESO, EGRESO
   clienteId       String?
   empleadoId      String?
+  citaId          String?  // ← NUEVO CAMPO
   fecha           DateTime @default(now())
   total           Float
-  metodoPago      String   // EFECTIVO, TRANSFERENCIA
+  metodoPago      String   // EFECTIVO, TRANSFERENCIA, PENDIENTE
+  estadoPago      String   @default("PENDIENTE") // ← NUEVO CAMPO: PENDIENTE, PAGADO
   referencia      String?
   concepto        String?
   categoria       String?
@@ -133,6 +136,7 @@ model Transaccion {
   items           TransaccionItem[]
   cliente         Cliente? @relation(fields: [clienteId], references: [id])
   empleado        Empleado? @relation(fields: [empleadoId], references: [id])
+  cita            Cita? @relation(fields: [citaId], references: [id]) // ← NUEVA RELACIÓN
   
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -140,6 +144,8 @@ model Transaccion {
   @@index([fecha])
   @@index([tipo, fecha])
   @@index([metodoPago])
+  @@index([estadoPago]) // ← NUEVO ÍNDICE
+  @@index([citaId]) // ← NUEVO ÍNDICE
 }
 
 model TransaccionItem {
