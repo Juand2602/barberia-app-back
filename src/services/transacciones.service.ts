@@ -100,6 +100,17 @@ export class TransaccionesService {
           })
         : [];
 
+    // Determinar el estado de pago automáticamente
+    let estadoPago = data.estadoPago || 'PENDIENTE';
+    
+    // CORRECCIÓN 1 y 2: Ventas desde front y egresos son PAGADO
+    if (data.tipo === 'EGRESO') {
+      estadoPago = 'PAGADO'; // Egresos siempre pagados
+    } else if (data.tipo === 'INGRESO' && !data.citaId) {
+      // Si es ingreso SIN cita (creado desde front), es PAGADO
+      estadoPago = 'PAGADO';
+    }
+
     // Crear la transacción
     const transaccion = await prisma.transaccion.create({
       data: {
@@ -110,7 +121,7 @@ export class TransaccionesService {
         fecha: data.fecha ? new Date(data.fecha) : new Date(),
         total: data.total,
         metodoPago: data.metodoPago,
-        estadoPago: data.estadoPago || 'PENDIENTE',
+        estadoPago: estadoPago,
         referencia: data.referencia || null,
         concepto: data.concepto || null,
         categoria: data.categoria || null,

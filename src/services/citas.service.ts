@@ -213,7 +213,7 @@ export class CitasService {
         await transaccionesService.crearTransaccionDesdeCita({
           citaId: cita.id,
           clienteId: cita.clienteId,
-          empleadoId: cita.empleadoId,
+          empleadoId: cita.empleadoId, // ← CORRECCIÓN 3: Ya incluye el empleado
           servicioId: servicio.id,
           servicioNombre: servicio.nombre,
           precio: servicio.precio,
