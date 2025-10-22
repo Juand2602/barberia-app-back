@@ -174,6 +174,9 @@ export class TransaccionesService {
       if (fechaFin) where.fecha.lte = fechaFin;
     }
 
+    // IMPORTANTE: Solo contar transacciones PAGADAS en las estadísticas
+    const wherePagado = { ...where, estadoPago: 'PAGADO' };
+
     const [
       totalIngresos,
       totalEgresos,
@@ -182,14 +185,44 @@ export class TransaccionesService {
       totalPagado,
       totalPendiente,
       totalTransacciones,
+      totalTransaccionesPagadas,
     ] = await Promise.all([
-      prisma.transaccion.aggregate({ where: { ...where, tipo: 'INGRESO' }, _sum: { total: true }, _count: true }),
-      prisma.transaccion.aggregate({ where: { ...where, tipo: 'EGRESO' }, _sum: { total: true }, _count: true }),
-      prisma.transaccion.aggregate({ where: { ...where, metodoPago: 'EFECTIVO' }, _sum: { total: true } }),
-      prisma.transaccion.aggregate({ where: { ...where, metodoPago: 'TRANSFERENCIA' }, _sum: { total: true } }),
-      prisma.transaccion.aggregate({ where: { ...where, estadoPago: 'PAGADO' }, _sum: { total: true } }),
-      prisma.transaccion.aggregate({ where: { ...where, estadoPago: 'PENDIENTE' }, _sum: { total: true } }),
+      // Solo ingresos PAGADOS
+      prisma.transaccion.aggregate({ 
+        where: { ...wherePagado, tipo: 'INGRESO' }, 
+        _sum: { total: true }, 
+        _count: true 
+      }),
+      // Solo egresos PAGADOS
+      prisma.transaccion.aggregate({ 
+        where: { ...wherePagado, tipo: 'EGRESO' }, 
+        _sum: { total: true }, 
+        _count: true 
+      }),
+      // Solo efectivo PAGADO
+      prisma.transaccion.aggregate({ 
+        where: { ...wherePagado, metodoPago: 'EFECTIVO' }, 
+        _sum: { total: true } 
+      }),
+      // Solo transferencias PAGADAS
+      prisma.transaccion.aggregate({ 
+        where: { ...wherePagado, metodoPago: 'TRANSFERENCIA' }, 
+        _sum: { total: true } 
+      }),
+      // Total pagado
+      prisma.transaccion.aggregate({ 
+        where: { ...where, estadoPago: 'PAGADO' }, 
+        _sum: { total: true } 
+      }),
+      // Total pendiente (para información)
+      prisma.transaccion.aggregate({ 
+        where: { ...where, estadoPago: 'PENDIENTE' }, 
+        _sum: { total: true } 
+      }),
+      // Total todas las transacciones
       prisma.transaccion.count({ where }),
+      // Total solo transacciones pagadas
+      prisma.transaccion.count({ where: wherePagado }),
     ]);
 
     const ingresos = totalIngresos._sum.total || 0;
@@ -197,12 +230,13 @@ export class TransaccionesService {
     const balance = ingresos - egresos;
 
     return {
-      totalTransacciones,
+      totalTransacciones, // Todas (incluye pendientes)
+      totalTransaccionesPagadas, // Solo pagadas
       cantidadIngresos: totalIngresos._count,
       cantidadEgresos: totalEgresos._count,
-      totalIngresos: ingresos,
-      totalEgresos: egresos,
-      balance,
+      totalIngresos: ingresos, // Solo pagados
+      totalEgresos: egresos, // Solo pagados
+      balance, // Solo de transacciones pagadas
       totalEfectivo: totalEfectivo._sum.total || 0,
       totalTransferencias: totalTransferencias._sum.total || 0,
       totalPagado: totalPagado._sum.total || 0,
