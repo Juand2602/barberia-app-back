@@ -37,6 +37,9 @@ model Empleado {
   activo          Boolean  @default(true)
   fechaIngreso    DateTime @default(now())
   
+  // ✅ NUEVO: Porcentaje de comisión
+  porcentajeComision Float @default(50.0) // Porcentaje que se lleva el empleado
+  
   horarioLunes    String?  // JSON: {"inicio": "09:00", "fin": "18:00"}
   horarioMartes   String?
   horarioMiercoles String?
@@ -47,6 +50,7 @@ model Empleado {
   
   citas           Cita[]
   transacciones   Transaccion[]
+  pagosComision   PagoComision[] // ✅ NUEVO
   
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -87,7 +91,7 @@ model Cita {
   
   cliente         Cliente  @relation(fields: [clienteId], references: [id])
   empleado        Empleado @relation(fields: [empleadoId], references: [id])
-  transacciones   Transaccion[] // ← NUEVA RELACIÓN
+  transacciones   Transaccion[]
   
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -123,11 +127,11 @@ model Transaccion {
   tipo            String   // INGRESO, EGRESO
   clienteId       String?
   empleadoId      String?
-  citaId          String?  // ← NUEVO CAMPO
+  citaId          String?
   fecha           DateTime @default(now())
   total           Float
   metodoPago      String   // EFECTIVO, TRANSFERENCIA, PENDIENTE
-  estadoPago      String   @default("PENDIENTE") // ← NUEVO CAMPO: PENDIENTE, PAGADO
+  estadoPago      String   @default("PENDIENTE") // PENDIENTE, PAGADO
   referencia      String?
   concepto        String?
   categoria       String?
@@ -136,7 +140,7 @@ model Transaccion {
   items           TransaccionItem[]
   cliente         Cliente? @relation(fields: [clienteId], references: [id])
   empleado        Empleado? @relation(fields: [empleadoId], references: [id])
-  cita            Cita? @relation(fields: [citaId], references: [id]) // ← NUEVA RELACIÓN
+  cita            Cita? @relation(fields: [citaId], references: [id])
   
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -144,8 +148,9 @@ model Transaccion {
   @@index([fecha])
   @@index([tipo, fecha])
   @@index([metodoPago])
-  @@index([estadoPago]) // ← NUEVO ÍNDICE
-  @@index([citaId]) // ← NUEVO ÍNDICE
+  @@index([estadoPago])
+  @@index([citaId])
+  @@index([empleadoId, estadoPago, tipo]) // ✅ NUEVO: Para cálculo de comisiones
 }
 
 model TransaccionItem {
@@ -162,6 +167,36 @@ model TransaccionItem {
   createdAt       DateTime    @default(now())
   
   @@index([transaccionId])
+}
+
+// ==================== PAGOS DE COMISIÓN ====================
+// ✅ NUEVO MODELO
+model PagoComision {
+  id              String   @id @default(uuid())
+  empleadoId      String
+  periodo         String   // "2025-01" para enero 2025 (formato YYYY-MM)
+  fechaPago       DateTime @default(now())
+  fechaInicio     DateTime // Inicio del periodo calculado
+  fechaFin        DateTime // Fin del periodo calculado
+  totalVentas     Float    // Total de ventas del empleado en el periodo
+  porcentaje      Float    // Porcentaje aplicado
+  montoComision   Float    // Monto calculado de comisión
+  montoPagado     Float    // Monto realmente pagado (puede ser diferente)
+  diferencia      Float    // Ajustes o descuentos
+  metodoPago      String   // EFECTIVO, TRANSFERENCIA
+  referencia      String?  // Número de transferencia
+  notas           String?
+  transaccionIds  String   // JSON array con IDs de transacciones incluidas
+  cantidadTransacciones Int // Cantidad de transacciones incluidas
+  
+  empleado        Empleado @relation(fields: [empleadoId], references: [id])
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@unique([empleadoId, periodo]) // No se puede pagar dos veces el mismo periodo
+  @@index([empleadoId, fechaPago])
+  @@index([periodo])
 }
 
 // ==================== CIERRE DE CAJA ====================

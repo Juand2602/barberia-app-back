@@ -1,4 +1,4 @@
-// src/services/empleados.service.ts (Nuevo Backend - CORREGIDO)
+// src/services/empleados.service.ts (Backend - ACTUALIZADO)
 
 import prisma from '../config/database';
 
@@ -23,10 +23,9 @@ export class EmpleadosService {
       },
     });
 
-    // 🔥 CLAVE: Parsear especialidades y horarios para que el frontend reciba objetos/arrays
     return empleados.map(emp => ({
       ...emp,
-      especialidades: JSON.parse(emp.especialidades || '[]'), // Asume '[]' si es null o vacío
+      especialidades: JSON.parse(emp.especialidades || '[]'),
       horarioLunes: emp.horarioLunes ? JSON.parse(emp.horarioLunes) : null,
       horarioMartes: emp.horarioMartes ? JSON.parse(emp.horarioMartes) : null,
       horarioMiercoles: emp.horarioMiercoles ? JSON.parse(emp.horarioMiercoles) : null,
@@ -62,7 +61,6 @@ export class EmpleadosService {
       throw new Error('Empleado no encontrado');
     }
 
-    // 🔥 CLAVE: Parsear JSON para la respuesta individual
     return {
       ...empleado,
       especialidades: JSON.parse(empleado.especialidades || '[]'),
@@ -78,7 +76,7 @@ export class EmpleadosService {
 
   // Crear un nuevo empleado
   async create(data: any) {
-    // 1. Validaciones
+    // Validaciones
     if (!data.nombre || typeof data.nombre !== 'string' || data.nombre.trim() === '') {
       throw new Error('El nombre del empleado es obligatorio y no puede estar vacío.');
     }
@@ -89,18 +87,31 @@ export class EmpleadosService {
     const nombreNormalizado = data.nombre.trim();
     const telefonoNormalizado = data.telefono.trim();
 
-    const existentePorNombre = await prisma.empleado.findFirst({ where: { nombre: nombreNormalizado } });
+    const existentePorNombre = await prisma.empleado.findFirst({ 
+      where: { nombre: nombreNormalizado } 
+    });
     if (existentePorNombre) throw new Error('Ya existe un empleado con ese nombre.');
 
-    const existentePorTelefono = await prisma.empleado.findFirst({ where: { telefono: telefonoNormalizado } });
+    const existentePorTelefono = await prisma.empleado.findFirst({ 
+      where: { telefono: telefonoNormalizado } 
+    });
     if (existentePorTelefono) throw new Error('Ya existe un empleado con ese número de teléfono.');
 
-    // 2. Crear el empleado
+    // ✅ Validar porcentaje de comisión
+    const porcentajeComision = data.porcentajeComision !== undefined 
+      ? parseFloat(data.porcentajeComision) 
+      : 50.0;
+
+    if (porcentajeComision < 0 || porcentajeComision > 100) {
+      throw new Error('El porcentaje de comisión debe estar entre 0 y 100.');
+    }
+
+    // Crear el empleado
     const empleado = await prisma.empleado.create({
       data: {
         nombre: nombreNormalizado,
         telefono: telefonoNormalizado,
-        // 🔥 CLAVE: Guardar los arrays/objetos como strings JSON
+        porcentajeComision, // ✅ NUEVO
         especialidades: JSON.stringify(data.especialidades || []),
         horarioLunes: data.horarioLunes ? JSON.stringify(data.horarioLunes) : null,
         horarioMartes: data.horarioMartes ? JSON.stringify(data.horarioMartes) : null,
@@ -117,26 +128,40 @@ export class EmpleadosService {
 
   // Actualizar un empleado
   async update(id: string, data: any) {
-    // Validaciones si se proporcionan los datos
+    // Validaciones
     if (data.nombre !== undefined) {
       if (!data.nombre || typeof data.nombre !== 'string' || data.nombre.trim() === '') {
         throw new Error('El nombre, si se proporciona, no puede estar vacío.');
       }
-      const existente = await prisma.empleado.findFirst({ where: { nombre: data.nombre.trim(), NOT: { id } } });
+      const existente = await prisma.empleado.findFirst({ 
+        where: { nombre: data.nombre.trim(), NOT: { id } } 
+      });
       if (existente) throw new Error('Ya existe otro empleado con ese nombre.');
     }
+
     if (data.telefono !== undefined) {
       if (!data.telefono || typeof data.telefono !== 'string' || data.telefono.trim() === '') {
         throw new Error('El teléfono, si se proporciona, no puede estar vacío.');
       }
-      const existente = await prisma.empleado.findFirst({ where: { telefono: data.telefono.trim(), NOT: { id } } });
+      const existente = await prisma.empleado.findFirst({ 
+        where: { telefono: data.telefono.trim(), NOT: { id } } 
+      });
       if (existente) throw new Error('Ya existe otro empleado con ese teléfono.');
+    }
+
+    // ✅ Validar porcentaje de comisión si se proporciona
+    if (data.porcentajeComision !== undefined) {
+      const porcentaje = parseFloat(data.porcentajeComision);
+      if (porcentaje < 0 || porcentaje > 100) {
+        throw new Error('El porcentaje de comisión debe estar entre 0 y 100.');
+      }
     }
     
     // Preparar datos para la actualización
     const updateData: any = {};
     if (data.nombre !== undefined) updateData.nombre = data.nombre.trim();
     if (data.telefono !== undefined) updateData.telefono = data.telefono.trim();
+    if (data.porcentajeComision !== undefined) updateData.porcentajeComision = parseFloat(data.porcentajeComision); // ✅ NUEVO
     if (data.especialidades !== undefined) updateData.especialidades = JSON.stringify(data.especialidades || []);
     if (data.horarioLunes !== undefined) updateData.horarioLunes = data.horarioLunes ? JSON.stringify(data.horarioLunes) : null;
     if (data.horarioMartes !== undefined) updateData.horarioMartes = data.horarioMartes ? JSON.stringify(data.horarioMartes) : null;
@@ -171,7 +196,7 @@ export class EmpleadosService {
         where: { empleadoId: id, estado: 'COMPLETADA' },
       }),
       prisma.transaccion.aggregate({
-        where: { empleadoId: id, tipo: 'INGRESO' },
+        where: { empleadoId: id, tipo: 'INGRESO', estadoPago: 'PAGADO' },
         _sum: { total: true },
       }),
     ]);
@@ -182,9 +207,8 @@ export class EmpleadosService {
     };
   }
 
-   
-   async verificarDisponibilidad(empleadoId: string, fecha: Date, duracionMinutos: number) {
-    const diaSemana = fecha.getDay(); // 0 = Domingo, 1 = Lunes, etc.
+  async verificarDisponibilidad(empleadoId: string, fecha: Date, duracionMinutos: number) {
+    const diaSemana = fecha.getDay();
     const hora = fecha.getHours();
     const minutos = fecha.getMinutes();
 
@@ -199,16 +223,12 @@ export class EmpleadosService {
     ];
 
     const horarioDiaKey = diasSemana[diaSemana];
-    
-    // 🔥 CLAVE: getById ya devuelve el horario como un objeto, no como un string.
     const horarioDia = (empleado as any)[horarioDiaKey];
 
-    // Verificamos que el objeto del horario exista y tenga las propiedades necesarias
     if (!horarioDia || typeof horarioDia !== 'object' || !horarioDia.inicio || !horarioDia.fin) {
       return { disponible: false, motivo: 'El empleado no trabaja este día o su horario está mal configurado' };
     }
 
-    // Verificar si está dentro del horario
     const [horaInicio, minInicio] = horarioDia.inicio.split(':').map(Number);
     const [horaFin, minFin] = horarioDia.fin.split(':').map(Number);
 
@@ -222,7 +242,6 @@ export class EmpleadosService {
       return { disponible: false, motivo };
     }
 
-    // Verificar citas existentes
     const finServicio = new Date(fecha.getTime() + duracionMinutos * 60000);
     const citasConflicto = await prisma.cita.count({
       where: {
@@ -242,4 +261,5 @@ export class EmpleadosService {
     return { disponible: true };
   }
 }
-export const empleadosService = new EmpleadosService(); 
+
+export const empleadosService = new EmpleadosService();
