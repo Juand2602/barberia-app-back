@@ -1,4 +1,4 @@
-// src/services/transacciones.service.ts - MEJORADO
+// src/services/transacciones.service.ts - MEJORADO CON EMPLEADO DE CITA
 
 import prisma from '../config/database';
 
@@ -36,7 +36,11 @@ export class TransaccionesService {
       include: {
         cliente: true,
         empleado: true,
-        cita: true,
+        cita: {
+          include: {
+            empleado: true, // ← IMPORTANTE: Incluir empleado de la cita
+          }
+        },
         items: {
           include: {
             servicio: true,
@@ -56,7 +60,11 @@ export class TransaccionesService {
       include: {
         cliente: true,
         empleado: true,
-        cita: true,
+        cita: {
+          include: {
+            empleado: true, // ← IMPORTANTE: Incluir empleado de la cita
+          }
+        },
         items: {
           include: {
             servicio: true,
@@ -103,11 +111,9 @@ export class TransaccionesService {
     // Determinar el estado de pago automáticamente
     let estadoPago = data.estadoPago || 'PENDIENTE';
     
-    // CORRECCIÓN 1 y 2: Ventas desde front y egresos son PAGADO
     if (data.tipo === 'EGRESO') {
-      estadoPago = 'PAGADO'; // Egresos siempre pagados
+      estadoPago = 'PAGADO';
     } else if (data.tipo === 'INGRESO' && !data.citaId) {
-      // Si es ingreso SIN cita (creado desde front), es PAGADO
       estadoPago = 'PAGADO';
     }
 
@@ -131,7 +137,11 @@ export class TransaccionesService {
       include: {
         cliente: true,
         empleado: true,
-        cita: true,
+        cita: {
+          include: {
+            empleado: true, // ← Incluir empleado de la cita
+          }
+        },
         items: { include: { servicio: true } },
       },
     });
@@ -151,7 +161,7 @@ export class TransaccionesService {
         ...(data.empleadoId !== undefined && { empleadoId: data.empleadoId }),
         ...(data.citaId !== undefined && { citaId: data.citaId }),
         ...(data.fecha && { fecha: new Date(data.fecha) }),
-        ...(data.total && { total: data.total }),
+        ...(data.total !== undefined && { total: data.total }),
         ...(data.metodoPago && { metodoPago: data.metodoPago }),
         ...(data.estadoPago && { estadoPago: data.estadoPago }),
         ...(data.referencia !== undefined && { referencia: data.referencia }),
@@ -162,7 +172,11 @@ export class TransaccionesService {
       include: {
         cliente: true,
         empleado: true,
-        cita: true,
+        cita: {
+          include: {
+            empleado: true, // ← Incluir empleado de la cita
+          }
+        },
         items: { include: { servicio: true } },
       },
     });
@@ -185,7 +199,6 @@ export class TransaccionesService {
       if (fechaFin) where.fecha.lte = fechaFin;
     }
 
-    // IMPORTANTE: Solo contar transacciones PAGADAS en las estadísticas
     const wherePagado = { ...where, estadoPago: 'PAGADO' };
 
     const [
@@ -198,41 +211,33 @@ export class TransaccionesService {
       totalTransacciones,
       totalTransaccionesPagadas,
     ] = await Promise.all([
-      // Solo ingresos PAGADOS
       prisma.transaccion.aggregate({ 
         where: { ...wherePagado, tipo: 'INGRESO' }, 
         _sum: { total: true }, 
         _count: true 
       }),
-      // Solo egresos PAGADOS
       prisma.transaccion.aggregate({ 
         where: { ...wherePagado, tipo: 'EGRESO' }, 
         _sum: { total: true }, 
         _count: true 
       }),
-      // Solo efectivo PAGADO
       prisma.transaccion.aggregate({ 
         where: { ...wherePagado, metodoPago: 'EFECTIVO' }, 
         _sum: { total: true } 
       }),
-      // Solo transferencias PAGADAS
       prisma.transaccion.aggregate({ 
         where: { ...wherePagado, metodoPago: 'TRANSFERENCIA' }, 
         _sum: { total: true } 
       }),
-      // Total pagado
       prisma.transaccion.aggregate({ 
         where: { ...where, estadoPago: 'PAGADO' }, 
         _sum: { total: true } 
       }),
-      // Total pendiente (para información)
       prisma.transaccion.aggregate({ 
         where: { ...where, estadoPago: 'PENDIENTE' }, 
         _sum: { total: true } 
       }),
-      // Total todas las transacciones
       prisma.transaccion.count({ where }),
-      // Total solo transacciones pagadas
       prisma.transaccion.count({ where: wherePagado }),
     ]);
 
@@ -241,21 +246,19 @@ export class TransaccionesService {
     const balance = ingresos - egresos;
 
     return {
-      totalTransacciones, // Todas (incluye pendientes)
-      totalTransaccionesPagadas, // Solo pagadas
+      totalTransacciones,
+      totalTransaccionesPagadas,
       cantidadIngresos: totalIngresos._count,
       cantidadEgresos: totalEgresos._count,
-      totalIngresos: ingresos, // Solo pagados
-      totalEgresos: egresos, // Solo pagados
-      balance, // Solo de transacciones pagadas
+      totalIngresos: ingresos,
+      totalEgresos: egresos,
+      balance,
       totalEfectivo: totalEfectivo._sum.total || 0,
       totalTransferencias: totalTransferencias._sum.total || 0,
       totalPagado: totalPagado._sum.total || 0,
       totalPendiente: totalPendiente._sum.total || 0,
     };
   }
-
-  // --- MÉTODOS PARA GESTIÓN DE PAGOS Y CITAS ---
 
   /**
    * Crea una transacción pendiente automáticamente al crear una cita
@@ -307,21 +310,18 @@ export class TransaccionesService {
     referencia?: string;
   }) {
     try {
-      // Obtener la transacción
       const transaccion = await this.getById(transaccionId);
 
       if (transaccion.estadoPago === 'PAGADO') {
         throw new Error('La transacción ya está marcada como pagada');
       }
 
-      // Actualizar transacción
       const transaccionActualizada = await this.update(transaccionId, {
         estadoPago: 'PAGADO',
         metodoPago: datos.metodoPago,
         referencia: datos.referencia || null,
       });
 
-      // Si la transacción está ligada a una cita, marcar la cita como COMPLETADA
       if (transaccion.citaId) {
         await prisma.cita.update({
           where: { id: transaccion.citaId },
@@ -348,7 +348,11 @@ export class TransaccionesService {
       include: {
         cliente: true,
         empleado: true,
-        cita: true,
+        cita: {
+          include: {
+            empleado: true, // ← Incluir empleado de la cita
+          }
+        },
         items: {
           include: {
             servicio: true,
