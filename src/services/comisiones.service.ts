@@ -1,5 +1,4 @@
 // src/services/comisiones.service.ts
-
 import prisma from '../config/database';
 import { format } from 'date-fns';
 
@@ -16,6 +15,20 @@ export class ComisionesService {
       throw new Error('Empleado no encontrado');
     }
 
+    // ✅ NUEVO: Obtener IDs de transacciones que ya tienen comisión pagada
+    const pagosAnteriores = await prisma.pagoComision.findMany({
+      where: { empleadoId },
+      select: { transaccionIds: true },
+    });
+
+    // Extraer todos los IDs de transacciones ya pagadas
+    const transaccionesYaPagadas = new Set<string>();
+    pagosAnteriores.forEach(pago => {
+      const ids = JSON.parse(pago.transaccionIds) as string[];
+      ids.forEach(id => transaccionesYaPagadas.add(id));
+    });
+
+    // Obtener transacciones del periodo
     const transacciones = await prisma.transaccion.findMany({
       where: {
         empleadoId,
@@ -37,7 +50,12 @@ export class ComisionesService {
       orderBy: { fecha: 'asc' },
     });
 
-    const totalVentas = transacciones.reduce((sum, t) => sum + t.total, 0);
+    // ✅ FILTRAR: Excluir transacciones que ya tienen comisión pagada
+    const transaccionesPendientes = transacciones.filter(
+      t => !transaccionesYaPagadas.has(t.id)
+    );
+
+    const totalVentas = transaccionesPendientes.reduce((sum, t) => sum + t.total, 0);
     const montoComision = (totalVentas * empleado.porcentajeComision) / 100;
 
     return {
@@ -52,8 +70,8 @@ export class ComisionesService {
       },
       totalVentas,
       montoComision,
-      cantidadTransacciones: transacciones.length,
-      transacciones: transacciones.map(t => ({
+      cantidadTransacciones: transaccionesPendientes.length,
+      transacciones: transaccionesPendientes.map(t => ({
         id: t.id,
         fecha: t.fecha,
         total: t.total,
@@ -81,6 +99,7 @@ export class ComisionesService {
     notas?: string;
     ajuste?: number;
   }) {
+    // Verificar si ya existe un pago para este periodo
     const pagoExistente = await prisma.pagoComision.findUnique({
       where: {
         empleadoId_periodo: {
@@ -94,11 +113,17 @@ export class ComisionesService {
       throw new Error('Ya existe un pago registrado para este periodo');
     }
 
+    // Calcular comisiones pendientes (ya filtra las pagadas)
     const calculo = await this.calcularComisionesPendientes(
       data.empleadoId,
       data.fechaInicio,
       data.fechaFin
     );
+
+    // ✅ VALIDAR: Verificar que hay transacciones pendientes
+    if (calculo.cantidadTransacciones === 0) {
+      throw new Error('No hay transacciones pendientes de pago en este periodo');
+    }
 
     const ajuste = data.ajuste || 0;
     const montoPagado = calculo.montoComision + ajuste;
@@ -145,6 +170,46 @@ export class ComisionesService {
       ...pago,
       transaccionIds: JSON.parse(pago.transaccionIds),
     }));
+  }
+
+  /**
+   * ✅ NUEVO: Verifica si una transacción ya tiene su comisión pagada
+   */
+  async verificarComisionPagada(transaccionId: string): Promise<boolean> {
+    const pago = await prisma.pagoComision.findFirst({
+      where: {
+        transaccionIds: {
+          contains: transaccionId,
+        },
+      },
+    });
+
+    return !!pago;
+  }
+
+  /**
+   * ✅ NUEVO: Obtiene el detalle de comisión de una transacción específica
+   */
+  async obtenerComisionTransaccion(transaccionId: string) {
+    const pago = await prisma.pagoComision.findFirst({
+      where: {
+        transaccionIds: {
+          contains: transaccionId,
+        },
+      },
+      include: {
+        empleado: true,
+      },
+    });
+
+    if (!pago) {
+      return null;
+    }
+
+    return {
+      ...pago,
+      transaccionIds: JSON.parse(pago.transaccionIds),
+    };
   }
 }
 
