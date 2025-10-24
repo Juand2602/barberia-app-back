@@ -233,61 +233,93 @@ export class ReportesService {
     };
   }
 
-  // ==================== REPORTES FINANCIEROS ====================
-  async getReporteFinanciero(fechaInicio: Date, fechaFin: Date) {
-    const inicio = startOfDay(fechaInicio); 
-    const fin = endOfDay(fechaFin);
-    
-    // ✅ FILTRAR SOLO TRANSACCIONES PAGADAS PARA INGRESOS
-    const [ingresos, egresos] = await Promise.all([
-      prisma.transaccion.findMany({ 
-        where: { 
-          tipo: 'INGRESO', 
-          estadoPago: 'PAGADO',  // ✅ CRÍTICO
-          fecha: { gte: inicio, lte: fin } 
-        } 
-      }),
-      prisma.transaccion.findMany({ 
-        where: { 
-          tipo: 'EGRESO', 
-          fecha: { gte: inicio, lte: fin } 
-        } 
-      })
-    ]);
+ // ==================== REPORTES FINANCIEROS ====================
+async getReporteFinanciero(fechaInicio: Date, fechaFin: Date) {
+  const inicio = startOfDay(fechaInicio); 
+  const fin = endOfDay(fechaFin);
+  
+  // ✅ FILTRAR SOLO TRANSACCIONES PAGADAS PARA INGRESOS
+  const [ingresos, egresos] = await Promise.all([
+    prisma.transaccion.findMany({ 
+      where: { 
+        tipo: 'INGRESO', 
+        estadoPago: 'PAGADO',  // ✅ CRÍTICO
+        fecha: { gte: inicio, lte: fin } 
+      },
+      include: { cliente: true, empleado: true }, // ✅ NUEVO: Incluir relaciones
+      orderBy: { fecha: 'desc' }
+    }),
+    prisma.transaccion.findMany({ 
+      where: { 
+        tipo: 'EGRESO', 
+        fecha: { gte: inicio, lte: fin } 
+      },
+      orderBy: { fecha: 'desc' }
+    })
+  ]);
 
-    const totalIngresos = ingresos.reduce((sum, t) => sum + t.total, 0);
-    const totalEgresos = egresos.reduce((sum, t) => sum + t.total, 0);
-    const utilidad = totalIngresos - totalEgresos;
-    const margenUtilidad = totalIngresos > 0 ? (utilidad / totalIngresos) * 100 : 0;
+  const totalIngresos = ingresos.reduce((sum, t) => sum + t.total, 0);
+  const totalEgresos = egresos.reduce((sum, t) => sum + t.total, 0);
+  const utilidad = totalIngresos - totalEgresos;
+  const margenUtilidad = totalIngresos > 0 ? (utilidad / totalIngresos) * 100 : 0;
 
-    const ingresosPorMetodo = ingresos.reduce((acc, t) => { 
-      acc[t.metodoPago] = (acc[t.metodoPago] || 0) + t.total; 
-      return acc; 
-    }, {} as Record<string, number>);
+  const ingresosPorMetodo = ingresos.reduce((acc, t) => { 
+    acc[t.metodoPago] = (acc[t.metodoPago] || 0) + t.total; 
+    return acc; 
+  }, {} as Record<string, number>);
 
-    const egresosPorCategoria = egresos.reduce((acc, t) => { 
-      const categoria = t.categoria || 'Sin categoría'; 
-      acc[categoria] = (acc[categoria] || 0) + t.total; 
-      return acc; 
-    }, {} as Record<string, number>);
+  // ✅ NUEVO: Egresos por método de pago
+  const egresosPorMetodo = egresos.reduce((acc, t) => { 
+    acc[t.metodoPago] = (acc[t.metodoPago] || 0) + t.total; 
+    return acc; 
+  }, {} as Record<string, number>);
 
-    const flujosDiarios = [...ingresos, ...egresos].reduce((acc, t) => {
-      const fecha = startOfDay(t.fecha).toISOString();
-      if (!acc[fecha]) acc[fecha] = { fecha, ingresos: 0, egresos: 0, neto: 0 };
-      if (t.tipo === 'INGRESO') acc[fecha].ingresos += t.total; 
-      else acc[fecha].egresos += t.total;
-      acc[fecha].neto = acc[fecha].ingresos - acc[fecha].egresos; 
-      return acc;
-    }, {} as Record<string, any>);
+  const egresosPorCategoria = egresos.reduce((acc, t) => { 
+    const categoria = t.categoria || 'Sin categoría'; 
+    acc[categoria] = (acc[categoria] || 0) + t.total; 
+    return acc; 
+  }, {} as Record<string, number>);
 
-    return { 
-      periodo: { inicio, fin }, 
-      resumen: { totalIngresos, totalEgresos, utilidad, margenUtilidad }, 
-      ingresosPorMetodo, 
-      egresosPorCategoria, 
-      flujoDiario: Object.values(flujosDiarios).sort((a: any, b: any) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime()) 
-    };
-  }
+  const flujosDiarios = [...ingresos, ...egresos].reduce((acc, t) => {
+    const fecha = startOfDay(t.fecha).toISOString();
+    if (!acc[fecha]) acc[fecha] = { fecha, ingresos: 0, egresos: 0, neto: 0 };
+    if (t.tipo === 'INGRESO') acc[fecha].ingresos += t.total; 
+    else acc[fecha].egresos += t.total;
+    acc[fecha].neto = acc[fecha].ingresos - acc[fecha].egresos; 
+    return acc;
+  }, {} as Record<string, any>);
+
+  // ✅ NUEVO: Detalle de transacciones de ingresos
+  const detalleIngresos = ingresos.map(t => ({
+    id: t.id,
+    fecha: t.fecha,
+    cliente: t.cliente?.nombre || null,
+    empleado: t.empleado?.nombre || null,
+    metodoPago: t.metodoPago,
+    total: t.total
+  }));
+
+  // ✅ NUEVO: Detalle de transacciones de egresos
+  const detalleEgresos = egresos.map(t => ({
+    id: t.id,
+    fecha: t.fecha,
+    concepto: t.concepto || null,
+    categoria: t.categoria || null,
+    metodoPago: t.metodoPago,
+    total: t.total
+  }));
+
+  return { 
+    periodo: { inicio, fin }, 
+    resumen: { totalIngresos, totalEgresos, utilidad, margenUtilidad }, 
+    ingresosPorMetodo,
+    egresosPorMetodo, // ✅ NUEVO
+    egresosPorCategoria, 
+    flujoDiario: Object.values(flujosDiarios).sort((a: any, b: any) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime()),
+    detalleIngresos, // ✅ NUEVO
+    detalleEgresos   // ✅ NUEVO
+  };
+}
 
   // ==================== REPORTES DE CLIENTES ====================
   async getReporteClientes(fechaInicio: Date, fechaFin: Date) {
@@ -567,6 +599,8 @@ export class ReportesService {
       .sort((a: any, b: any) => b.cantidadVendida - a.cantidadVendida)
       .slice(0, limit);
   }
+
+  
 }
 
 export const reportesService = new ReportesService();
