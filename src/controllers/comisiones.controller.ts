@@ -74,13 +74,6 @@ export class ComisionesController {
         });
       }
 
-      if (metodoPago === 'TRANSFERENCIA' && !referencia) {
-        return res.status(400).json({
-          success: false,
-          message: 'La referencia es requerida para transferencias',
-        });
-      }
-
       const pago = await comisionesService.registrarPago({
         empleadoId,
         periodo,
