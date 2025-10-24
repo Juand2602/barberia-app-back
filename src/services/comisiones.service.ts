@@ -15,7 +15,7 @@ export class ComisionesService {
       throw new Error('Empleado no encontrado');
     }
 
-    // ✅ NUEVO: Obtener IDs de transacciones que ya tienen comisión pagada
+    // ✅ Obtener IDs de transacciones que ya tienen comisión pagada
     const pagosAnteriores = await prisma.pagoComision.findMany({
       where: { empleadoId },
       select: { transaccionIds: true },
@@ -24,8 +24,12 @@ export class ComisionesService {
     // Extraer todos los IDs de transacciones ya pagadas
     const transaccionesYaPagadas = new Set<string>();
     pagosAnteriores.forEach(pago => {
-      const ids = JSON.parse(pago.transaccionIds) as string[];
-      ids.forEach(id => transaccionesYaPagadas.add(id));
+      try {
+        const ids = JSON.parse(pago.transaccionIds) as string[];
+        ids.forEach(id => transaccionesYaPagadas.add(id));
+      } catch (error) {
+        console.error('Error parsing transaccionIds:', error);
+      }
     });
 
     // Obtener transacciones del periodo
@@ -170,46 +174,6 @@ export class ComisionesService {
       ...pago,
       transaccionIds: JSON.parse(pago.transaccionIds),
     }));
-  }
-
-  /**
-   * ✅ NUEVO: Verifica si una transacción ya tiene su comisión pagada
-   */
-  async verificarComisionPagada(transaccionId: string): Promise<boolean> {
-    const pago = await prisma.pagoComision.findFirst({
-      where: {
-        transaccionIds: {
-          contains: transaccionId,
-        },
-      },
-    });
-
-    return !!pago;
-  }
-
-  /**
-   * ✅ NUEVO: Obtiene el detalle de comisión de una transacción específica
-   */
-  async obtenerComisionTransaccion(transaccionId: string) {
-    const pago = await prisma.pagoComision.findFirst({
-      where: {
-        transaccionIds: {
-          contains: transaccionId,
-        },
-      },
-      include: {
-        empleado: true,
-      },
-    });
-
-    if (!pago) {
-      return null;
-    }
-
-    return {
-      ...pago,
-      transaccionIds: JSON.parse(pago.transaccionIds),
-    };
   }
 }
 
