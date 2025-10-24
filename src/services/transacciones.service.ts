@@ -83,8 +83,13 @@ export class TransaccionesService {
   // Crear una nueva transacción
   async create(data: any) {
     // Validar que si es transferencia, tenga referencia
-    if (data.metodoPago === 'TRANSFERENCIA' && !data.referencia) {
-      throw new Error('Las transferencias requieren número de referencia');
+    if (
+      data.metodoPago === "TRANSFERENCIA" &&
+      data.referencia &&
+      data.referencia.trim() === ""
+    ) {
+      // Si se proporciona una referencia pero está vacía, la eliminamos
+      data.referencia = null;
     }
 
     // Validar que si es egreso, tenga concepto
