@@ -103,19 +103,9 @@ export class ComisionesService {
     notas?: string;
     ajuste?: number;
   }) {
-    // Verificar si ya existe un pago para este periodo
-    const pagoExistente = await prisma.pagoComision.findUnique({
-      where: {
-        empleadoId_periodo: {
-          empleadoId: data.empleadoId,
-          periodo: data.periodo,
-        },
-      },
-    });
-
-    if (pagoExistente) {
-      throw new Error('Ya existe un pago registrado para este periodo');
-    }
+    // ✅ SOLUCIÓN: En lugar de buscar por unique constraint, 
+    // generamos un periodo único con timestamp
+    const periodoUnico = `${data.periodo}-${Date.now()}`;
 
     // Calcular comisiones pendientes (ya filtra las pagadas)
     const calculo = await this.calcularComisionesPendientes(
@@ -136,7 +126,7 @@ export class ComisionesService {
     const pago = await prisma.pagoComision.create({
       data: {
         empleadoId: data.empleadoId,
-        periodo: data.periodo,
+        periodo: periodoUnico, // ✅ Periodo único con timestamp
         fechaInicio: data.fechaInicio,
         fechaFin: data.fechaFin,
         totalVentas: calculo.totalVentas,
