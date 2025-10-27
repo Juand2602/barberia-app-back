@@ -33,14 +33,19 @@ model Empleado {
   id              String   @id @default(uuid())
   nombre          String
   telefono        String
-  especialidades  String   // JSON: ["corte", "barba"]
+  especialidades  String
   activo          Boolean  @default(true)
   fechaIngreso    DateTime @default(now())
+  porcentajeComision Float @default(50.0)
   
-  // ✅ NUEVO: Porcentaje de comisión
-  porcentajeComision Float @default(50.0) // Porcentaje que se lleva el empleado
+  // ✅ NUEVO: Integración con Google Calendar
+  googleCalendarId    String?  // ID del calendario de Google
+  googleAccessToken   String?  @db.Text  // Token de acceso
+  googleRefreshToken  String?  @db.Text  // Token de refresh
+  googleTokenExpiry   DateTime? // Fecha de expiración del token
+  calendarioSincronizado Boolean @default(false)
   
-  horarioLunes    String?  // JSON: {"inicio": "09:00", "fin": "18:00"}
+  horarioLunes    String?
   horarioMartes   String?
   horarioMiercoles String?
   horarioJueves   String?
@@ -50,12 +55,13 @@ model Empleado {
   
   citas           Cita[]
   transacciones   Transaccion[]
-  pagosComision   PagoComision[] // ✅ NUEVO
+  pagosComision   PagoComision[]
   
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   
   @@index([activo])
+  @@index([calendarioSincronizado])
 }
 
 // ==================== SERVICIOS ====================
@@ -84,10 +90,13 @@ model Cita {
   servicioNombre  String
   fechaHora       DateTime
   duracionMinutos Int
-  estado          String   @default("PENDIENTE") // PENDIENTE, CONFIRMADA, COMPLETADA, CANCELADA
-  origen          String   @default("WHATSAPP") // WHATSAPP, MANUAL, TELEFONO
+  estado          String   @default("PENDIENTE")
+  origen          String   @default("WHATSAPP")
   notas           String?
   motivoCancelacion String?
+  
+  // ✅ NUEVO: ID del evento en Google Calendar
+  googleEventId   String?
   
   cliente         Cliente  @relation(fields: [clienteId], references: [id])
   empleado        Empleado @relation(fields: [empleadoId], references: [id])
@@ -100,6 +109,7 @@ model Cita {
   @@index([radicado])
   @@index([empleadoId, fechaHora])
   @@index([estado])
+  @@index([googleEventId])
 }
 
 // ==================== CONVERSACIONES (CONTEXTO BOT) ====================

@@ -17,6 +17,7 @@ import cierreCajaRoutes from './routes/cierrecaja.routes';
 import reportesRoutes from './routes/reportes.routes';
 import comisionesRoutes from './routes/comisiones.routes';
 import adminRoutes from './routes/admin.routes';
+import calendarRoutes from './routes/calendar.routes';
 
 // Services
 import { limpiarConversacionesInactivas } from './services/whatsapp/bot.service';
@@ -48,6 +49,7 @@ app.use('/api/cierre-caja', cierreCajaRoutes);
 app.use('/api/reportes', reportesRoutes);
 app.use('/api/comisiones', comisionesRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/calendar', calendarRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

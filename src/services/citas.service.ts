@@ -1,9 +1,10 @@
-// src/services/citas.service.ts - MEJORADO CON TRANSACCIONES
+// src/services/citas.service.ts - CON GOOGLE CALENDAR
 
 import prisma from '../config/database';
 import { empleadosService } from './empleados.service';
 import { transaccionesService } from './transacciones.service';
 import { serviciosService } from './servicios.service';
+import { googleCalendarService } from './google-calendar.service'; // ✅ NUEVO
 
 export class CitasService {
   // Obtener todas las citas con filtros
@@ -203,9 +204,16 @@ export class CitasService {
       },
     });
 
+    // ✅ NUEVO: Sincronizar con Google Calendar
+    try {
+      await googleCalendarService.crearEvento(cita.id);
+    } catch (error) {
+      console.error('❌ Error al sincronizar con Google Calendar:', error);
+      // No lanzar error para no fallar la creación de la cita
+    }
+
     // Crear transacción pendiente automáticamente
     try {
-      // Buscar el servicio para obtener su ID y precio
       const servicios = await serviciosService.listarActivos();
       const servicio = servicios.find((s: any) => s.nombre === data.servicioNombre);
 
@@ -213,7 +221,7 @@ export class CitasService {
         await transaccionesService.crearTransaccionDesdeCita({
           citaId: cita.id,
           clienteId: cita.clienteId,
-          empleadoId: cita.empleadoId, // ← CORRECCIÓN 3: Ya incluye el empleado
+          empleadoId: cita.empleadoId,
           servicioId: servicio.id,
           servicioNombre: servicio.nombre,
           precio: servicio.precio,
@@ -224,7 +232,6 @@ export class CitasService {
       }
     } catch (error) {
       console.error('Error creando transacción automática:', error);
-      // No lanzar error para no fallar la creación de la cita
     }
 
     return cita;
@@ -281,6 +288,13 @@ export class CitasService {
       },
     });
 
+    // ✅ NUEVO: Actualizar en Google Calendar
+    try {
+      await googleCalendarService.actualizarEvento(id);
+    } catch (error) {
+      console.error('❌ Error al actualizar en Google Calendar:', error);
+    }
+
     return cita;
   }
 
@@ -313,6 +327,13 @@ export class CitasService {
         empleado: true,
       },
     });
+
+    // ✅ NUEVO: Actualizar en Google Calendar (cambia el color según el estado)
+    try {
+      await googleCalendarService.actualizarEvento(id);
+    } catch (error) {
+      console.error('❌ Error al actualizar en Google Calendar:', error);
+    }
 
     // Si se cancela la cita, cancelar/eliminar la transacción pendiente
     if (data.estado === 'CANCELADA') {
@@ -347,6 +368,17 @@ export class CitasService {
     } catch (error) {
       console.error('Error eliminando transacción al borrar cita:', error);
     }
+
+    // ✅ NUEVO: No es necesario eliminar el evento de Google Calendar
+    // porque el empleado puede querer mantener el registro
+    // Si quieres eliminarlo, descomenta esto:
+    /*
+    try {
+      await googleCalendarService.eliminarEvento(id);
+    } catch (error) {
+      console.error('Error al eliminar de Google Calendar:', error);
+    }
+    */
 
     await prisma.cita.delete({
       where: { id },
@@ -434,6 +466,13 @@ export class CitasService {
         motivoCancelacion: 'Cancelado por WhatsApp',
       },
     });
+
+    // ✅ NUEVO: Actualizar en Google Calendar
+    try {
+      await googleCalendarService.actualizarEvento(cita.id);
+    } catch (error) {
+      console.error('Error al actualizar en Google Calendar:', error);
+    }
 
     // Eliminar transacción pendiente asociada
     try {
