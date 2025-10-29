@@ -8,7 +8,7 @@ export const MENSAJES = {
 
 *¿Necesitas información de...?*
 
-Por favor responda con una de las siguientes opciones:
+Selecciona una opción usando los botones o escribe el número:
 
 1️⃣ Dónde estamos
 2️⃣ Lista de precios
@@ -18,14 +18,7 @@ Por favor responda con una de las siguientes opciones:
 Escribe *"cancelar"* en cualquier momento para salir del proceso.`,
 
   UBICACION: (direccion: string = barberiaConfig.direccion) =>
-    `🧑🏾‍🦲 Estamos ubicados en *${direccion}*
-
-🧑🏾‍🦲 ¿Le puedo servir en algo más?
-
-Por favor responda con una de las siguientes opciones:
-
-👉🏾 Si
-👉🏾 No`,
+    `🧑🏾‍🦲 Estamos ubicados en *${direccion}*`,
 
   LISTA_PRECIOS: (servicios: Array<{ nombre: string; precio: number; descripcion?: string }>) => {
     let mensaje = `🧑🏾‍🦲 Todos nuestros servicios incluyen como *obsequio* una mascarilla para puntos negros:\n\n`;
@@ -42,12 +35,7 @@ Por favor responda con una de las siguientes opciones:
   },
 
   PUEDE_SERVIR_MAS: () =>
-    `🧑🏾‍🦲 ¿Le puedo servir en algo más?
-
-Por favor responda con una de las siguientes opciones:
-
-👉🏾 Si
-👉🏾 No`,
+    `🧑🏾‍🦲 ¿Le puedo servir en algo más?`,
 
   ELEGIR_BARBERO: (barberos: Array<{ id: string; nombre: string }>) => {
     let mensaje = `🧑🏾‍🦲 ¿Con cual de nuestros profesionales desea su cita?\n\n*Nuestros Profesionales*\n\n`;
@@ -63,17 +51,14 @@ Por favor responda con una de las siguientes opciones:
     return mensaje;
   },
 
-  SOLICITAR_NOMBRE_COMPLETO: () =>
-    `🧑🏾‍🦲 ¿Podría indicarme su *nombre completo* por favor?
+  ELEGIR_BARBERO_TEXTO: () =>
+    `🧑🏾‍🦲 ¿Con cual de nuestros profesionales desea su cita?\n\nSelecciona un barbero de la lista o escribe "ninguno" si ninguno te conviene.\n\nEscribe *"cancelar"* en cualquier momento para salir del proceso.`,
 
-Escribe *"cancelar"* en cualquier momento para salir del proceso.`,
+  SOLICITAR_NOMBRE_COMPLETO: () =>
+    `🧑🏾‍🦲 ¿Podría indicarme su *nombre completo* por favor?\n\nEscribe *"cancelar"* en cualquier momento para salir del proceso.`,
 
   NOMBRE_INVALIDO: () =>
-    `🧑🏾‍🦲 Por favor lea con atención y responda correctamente
-
-Intente de nuevo por favor
-
-Escribe *"cancelar"* en cualquier momento para salir del proceso.`,
+    `🧑🏾‍🦲 Por favor lea con atención y responda correctamente\n\nIntente de nuevo por favor\n\nEscribe *"cancelar"* en cualquier momento para salir del proceso.`,
 
   SOLICITAR_FECHA: () =>
     `🧑🏾‍🦲 ¿Para cuando desea su cita?
@@ -87,6 +72,9 @@ Por favor responda con una de las siguientes opciones:
 También puede escribir una *fecha específica* (ej: 25/12/2023) o un *día de la semana* (ej: viernes)
 
 Escribe *"cancelar"* en cualquier momento para salir del proceso.`,
+
+  SOLICITAR_FECHA_TEXTO: () =>
+    `🧑🏾‍🦲 ¿Para cuando desea su cita?\n\nSelecciona una fecha usando los botones o escribe una fecha específica (ej: 25/12/2023) o un día de la semana (ej: viernes).\n\nEscribe *"cancelar"* en cualquier momento para salir del proceso.`,
 
   CONSULTANDO_AGENDA: () =>
     `🧑🏾‍🦲 Un momento por favor, voy a consultar la agenda...`,
@@ -104,20 +92,14 @@ Escribe *"cancelar"* en cualquier momento para salir del proceso.`,
     return mensaje;
   },
 
+  HORARIOS_DISPONIBLES_TEXTO: () =>
+    `🧑🏾‍🦲 Tengo los siguientes turnos disponibles.\n\nSelecciona un horario de la lista o envíame el número del turno.\n\nSi no desea ninguno de los turnos disponibles envíeme la palabra *Cancelar*`,
+
   NO_HAY_HORARIOS: () =>
-    `🧑🏾‍🦲 Lo siento, no hay turnos disponibles para ese día.
-
-¿Desea intentar con otra fecha?
-
-👉🏾 Si
-👉🏾 No
-
-Escribe *"cancelar"* en cualquier momento para salir del proceso.`,
+    `🧑🏾‍🦲 Lo siento, no hay turnos disponibles para ese día.`,
 
   HORARIO_YA_OCUPADO: () =>
-    `🧑🏾‍🦲 Lo siento, ese horario ya ha sido ocupado por otro cliente.
-
-Por favor seleccione otro horario de la lista disponible.`,
+    `🧑🏾‍🦲 Lo siento, ese horario ya ha sido ocupado por otro cliente.\n\nPor favor seleccione otro horario de la lista disponible.`,
 
   CITA_CONFIRMADA: (datos: {
     radicado: string;
@@ -144,16 +126,7 @@ Por favor seleccione otro horario de la lista disponible.`,
 ¡Le esperamos! 💈`,
 
   SOLICITAR_RADICADO: () =>
-    `🧑🏾‍🦲 Para cancelar su cita necesito el código de radicado
-
-¿Tiene con usted el código de su cita?
-
-Por favor responda:
-
-👉🏾 Sí (envíeme el código)
-👉🏾 No (buscaré sus citas)
-
-Escribe *"cancelar"* en cualquier momento para salir del proceso.`,
+    `🧑🏾‍🦲 Para cancelar su cita necesito el código de radicado\n\n¿Tiene con usted el código de su cita?\n\nEscribe *"cancelar"* en cualquier momento para salir del proceso.`,
 
   SIN_RADICADO_BUSCAR_CITAS: () =>
     `🧑🏾‍🦲 No hay problema, déjeme buscar sus citas activas...`,
@@ -180,24 +153,17 @@ Escribe *"cancelar"* en cualquier momento para salir del proceso.`,
     return mensaje;
   },
 
-  SIN_CITAS_ACTIVAS: () =>
-    `🧑🏾‍🦲 No encontré citas activas asociadas a su número de teléfono
+  MOSTRAR_CITAS_ACTIVAS_TEXTO: () =>
+    `📋 *Sus citas activas:*\n\nSelecciona la cita que deseas cancelar de la lista o envía el código de radicado directamente.`,
 
-Si está seguro de que tiene una cita, por favor verifique el código de radicado y envíemelo directamente`,
+  SIN_CITAS_ACTIVAS: () =>
+    `🧑🏾‍🦲 No encontré citas activas asociadas a su número de teléfono\n\nSi está seguro de que tiene una cita, por favor verifique el código de radicado y envíemelo directamente`,
 
   SOLICITAR_CODIGO_RADICADO: () =>
-    `🧑🏾‍🦲 Por favor envíeme el código de su cita
-
-💡 También puede enviar solo los *números* (ej: 123456) y lo buscaré
-
-Escribe *"cancelar"* en cualquier momento para salir del proceso.`,
+    `🧑🏾‍🦲 Por favor envíeme el código de su cita\n\n💡 También puede enviar solo los *números* (ej: 123456) y lo buscaré\n\nEscribe *"cancelar"* en cualquier momento para salir del proceso.`,
 
   RADICADO_NO_ENCONTRADO: () =>
-    `🧑🏾‍🦲 No encontré ninguna cita con ese código
-
-Por favor verifique e intente nuevamente, o responda *"no"* para ver sus citas activas
-
-Escribe *"cancelar"* en cualquier momento para salir del proceso.`,
+    `🧑🏾‍🦲 No encontré ninguna cita con ese código\n\nPor favor verifique e intente nuevamente, o responda *"no"* para ver sus citas activas\n\nEscribe *"cancelar"* en cualquier momento para salir del proceso.`,
 
   CONFIRMAR_CANCELACION: (datos: {
     radicado: string;
@@ -210,27 +176,16 @@ Escribe *"cancelar"* en cualquier momento para salir del proceso.`,
 ✂️ Servicio: ${datos.servicio}
 📅 Fecha: ${datos.fecha}
 ⏰ Hora: ${datos.hora}
-🔖 Código: ${datos.radicado}
-
-Por favor responda:
-
-👉🏾 Sí, cancelar
-👉🏾 No, conservar
-
-Escribe *"cancelar"* en cualquier momento para salir del proceso.`,
+🔖 Código: ${datos.radicado}`,
 
   CITA_CANCELADA: () =>
-    `✅ *Su cita ha sido cancelada exitosamente*
-
-🧑🏾‍🦲 Si desea agendar una nueva cita, puede escribirnos cuando guste`,
+    `✅ *Su cita ha sido cancelada exitosamente*\n\n🧑🏾‍🦲 Si desea agendar una nueva cita, puede escribirnos cuando guste`,
 
   DESPEDIDA: () =>
     `🧑🏾‍🦲 Ha sido un placer servirle, espero que mi atención haya sido de su agrado, le deseo un feliz resto de día`,
 
   OPCION_INVALIDA: () =>
-    `🧑🏾‍🦲 Por favor lea con atención y responda correctamente
-
-Intente de nuevo por favor`,
+    `🧑🏾‍🦲 Por favor lea con atención y responda correctamente\n\nIntente de nuevo por favor`,
 
   ERROR_SERVIDOR: () =>
     `🧑🏾‍🦲 Lo siento, hubo un problema técnico. Por favor intente nuevamente en unos momentos.`,
@@ -274,9 +229,7 @@ export const formatearHora = (hora: string): string => {
  */
 export const generarRadicado = (): string => {
   const timestamp = Date.now().toString();
-  // Tomar los últimos 6 dígitos del timestamp
   const numeros = timestamp.slice(-6);
-  // Convertir a base 36 para hacerlo más corto y agregar letras
   const codigo = parseInt(numeros).toString(36).toUpperCase().padStart(6, '0');
   return `RAD-${codigo}`;
 };

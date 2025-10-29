@@ -1,4 +1,5 @@
 // src/controllers/webhook.controller.ts
+
 import { Request, Response } from 'express';
 import { WhatsAppWebhookPayload } from '../types';
 import { whatsappBotService } from '../services/whatsapp/bot.service';
@@ -10,7 +11,6 @@ export class WebhookController {
       const mode = req.query['hub.mode'];
       const token = req.query['hub.verify_token'];
       const challenge = req.query['hub.challenge'];
-
       const verifyToken = process.env.WHATSAPP_VERIFY_TOKEN || 'mi_token_secreto';
 
       if (mode === 'subscribe' && token === verifyToken) {
@@ -65,33 +65,41 @@ export class WebhookController {
   private async procesarMensaje(message: any) {
     try {
       const telefono = message.from;
-      
-      // Solo procesar mensajes de texto
+
+      // Procesar mensajes de texto
       if (message.type === 'text') {
         const textoMensaje = message.text?.body;
-        
         if (textoMensaje) {
-          console.log(`📩 Mensaje de ${telefono}: ${textoMensaje}`);
+          console.log(`📩 Mensaje de texto de ${telefono}: ${textoMensaje}`);
           
-          // Marcar como leído
           await whatsappMessagesService.marcarComoLeido(message.id);
-          
-          // Procesar el mensaje
-          await whatsappBotService.procesarMensaje(telefono, textoMensaje);
+          await whatsappBotService.procesarMensaje(telefono, textoMensaje, false);
         }
-      } else if (message.type === 'interactive') {
-        // Manejar mensajes interactivos (botones)
-        const buttonReply = message.interactive?.button_reply;
-        
-        if (buttonReply) {
-          console.log(`📩 Botón presionado por ${telefono}: ${buttonReply.title} (${buttonReply.id})`);
+      } 
+      // Procesar mensajes interactivos (botones y listas)
+      else if (message.type === 'interactive') {
+        // Respuesta de botón
+        if (message.interactive?.button_reply) {
+          const buttonReply = message.interactive.button_reply;
+          console.log(`🔘 Botón presionado por ${telefono}: ${buttonReply.title} (ID: ${buttonReply.id})`);
           
-          // Marcar como leído
           await whatsappMessagesService.marcarComoLeido(message.id);
-          
-          // Procesar el mensaje
-          await whatsappBotService.procesarMensaje(telefono, buttonReply.title);
+          // Usar el ID del botón para procesar
+          await whatsappBotService.procesarMensaje(telefono, buttonReply.id, true, buttonReply.id);
         }
+        // Respuesta de lista
+        else if (message.interactive?.list_reply) {
+          const listReply = message.interactive.list_reply;
+          console.log(`📋 Elemento de lista seleccionado por ${telefono}: ${listReply.title} (ID: ${listReply.id})`);
+          
+          await whatsappMessagesService.marcarComoLeido(message.id);
+          // Usar el ID del elemento seleccionado para procesar
+          await whatsappBotService.procesarMensaje(telefono, listReply.id, true, listReply.id);
+        }
+      }
+      // Ignorar otros tipos de mensajes (imágenes, audios, etc.)
+      else {
+        console.log(`ℹ️ Mensaje tipo ${message.type} de ${telefono} - No procesado`);
       }
     } catch (error) {
       console.error('Error procesando mensaje individual:', error);
