@@ -46,7 +46,6 @@ export class WhatsAppBotService {
       const estado = conversacion.estado as ConversationState;
       const contexto: ConversationContext = JSON.parse(conversacion.contexto);
 
-      // Si es un botón, usar el ID del botón como mensaje
       const mensajeAProcesar = esBoton && buttonId ? buttonId : mensaje;
 
       await this.procesarEstado(telefono, mensajeAProcesar, estado, contexto, conversacion.id);
@@ -68,7 +67,6 @@ export class WhatsAppBotService {
       ]
     );
     
-    // Enviar el botón de cancelar por separado
     await whatsappMessagesService.enviarMensajeConBotones(
       telefono,
       'También puedes:',
@@ -130,7 +128,6 @@ export class WhatsAppBotService {
   }
 
   private async manejarInicial(telefono: string, mensaje: string, contexto: ConversationContext, conversacionId: string) {
-    // Manejar IDs de botones del menú principal
     if (mensaje === 'menu_ubicacion') {
       await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.UBICACION());
       await whatsappMessagesService.enviarMensajeConBotones(
@@ -174,7 +171,6 @@ export class WhatsAppBotService {
       try {
         const barberos = await empleadosService.getAll(true);
         
-        // Usar lista desplegable para barberos
         await whatsappMessagesService.enviarMensajeConLista(
           telefono,
           MENSAJES.ELEGIR_BARBERO_TEXTO(),
@@ -210,7 +206,6 @@ export class WhatsAppBotService {
       return;
     }
 
-    // Mantener compatibilidad con opciones numéricas
     const opcion = messageParser.parsearOpcionNumerica(mensaje, 4);
     
     if (opcion === 1) {
@@ -344,7 +339,6 @@ export class WhatsAppBotService {
     try {
       const barberos = await empleadosService.getAll(true);
       
-      // Verificar si es una selección de lista (ID con formato barbero_XXX)
       if (mensaje.startsWith('barbero_')) {
         const barberoId = mensaje.replace('barbero_', '');
         const barbero = barberos.find(b => b.id === barberoId);
@@ -358,7 +352,6 @@ export class WhatsAppBotService {
         }
       }
       
-      // Compatibilidad con selección numérica
       const opcion = messageParser.parsearOpcionNumerica(mensaje, barberos.length);
       
       if (opcion) {
@@ -383,7 +376,6 @@ export class WhatsAppBotService {
     if (validarNombreCompleto(mensaje)) {
       contexto.nombre = mensaje;
       
-      // 🌟 3 BOTONES: Hoy, Mañana, Otro día
       await whatsappMessagesService.enviarMensajeConBotones(
         telefono,
         MENSAJES.SOLICITAR_FECHA_TEXTO(),
@@ -403,19 +395,16 @@ export class WhatsAppBotService {
   private async manejarFecha(telefono: string, mensaje: string, contexto: ConversationContext, conversacionId: string) {
     let fecha: Date | null = null;
     
-    // Manejar botones de fecha
     if (mensaje === 'fecha_hoy') {
       fecha = new Date();
     } else if (mensaje === 'fecha_manana') {
       fecha = new Date();
       fecha.setDate(fecha.getDate() + 1);
     } else if (mensaje === 'fecha_otro_dia') {
-      // 🌟 Cambiar al estado de esperar fecha específica
       await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.SOLICITAR_FECHA_ESPECIFICA());
       await this.actualizarConversacion(conversacionId, 'ESPERANDO_FECHA_ESPECIFICA', contexto);
       return;
     } else {
-      // Mantener compatibilidad: si escribe texto directamente
       fecha = messageParser.parsearFecha(mensaje);
     }
     
@@ -426,7 +415,6 @@ export class WhatsAppBotService {
     }
   }
 
-  // 🌟 NUEVO: Manejar cuando usuario escribe fecha específica
   private async manejarFechaEspecifica(telefono: string, mensaje: string, contexto: ConversationContext, conversacionId: string) {
     const fecha = messageParser.parsearFecha(mensaje);
     
@@ -435,19 +423,11 @@ export class WhatsAppBotService {
     } else {
       await whatsappMessagesService.enviarMensaje(
         telefono,
-        `🧑🏾‍🦲 No entendí la fecha "${mensaje}".
-
-Por favor intente con:
-• Un día de la semana: "viernes", "sábado"
-• Una fecha específica: "25/12/2024"
-• Formato corto: "25 dic", "15 de marzo"
-
-O escriba *"cancelar"* para salir.`
+        `🧑🏾‍🦲 No entendí la fecha "${mensaje}".\n\nPor favor intente con:\n• Un día de la semana: "viernes", "sábado"\n• Una fecha específica: "25/12/2024"\n• Formato corto: "25 dic", "15 de marzo"\n\nO escriba *"cancelar"* para salir.`
       );
     }
   }
 
-  // 🌟 NUEVO: Método centralizado para procesar fechas
   private async procesarFechaSeleccionada(
     telefono: string, 
     fecha: Date, 
@@ -457,7 +437,6 @@ O escriba *"cancelar"* para salir.`
     const fechaLocal = new Date(fecha);
     fechaLocal.setHours(0, 0, 0, 0);
     
-    // Validar que la fecha no sea en el pasado
     const hoy = new Date();
     hoy.setHours(0, 0, 0, 0);
     
@@ -469,7 +448,6 @@ O escriba *"cancelar"* para salir.`
       return;
     }
     
-    // Validar que no sea muy lejos en el futuro (máximo 3 meses)
     const maxFecha = new Date();
     maxFecha.setMonth(maxFecha.getMonth() + 3);
     
@@ -492,8 +470,12 @@ O escriba *"cancelar"* para salir.`
         contexto.horariosDisponibles = horariosFormateados;
         contexto.horariosRaw = horarios;
         
-        // 🌟 CORRECCIÓN: Usar el nuevo método para enviar horarios limitados
-        await this.enviarHorariosLimitados(telefono, horarios, contexto, conversacionId);
+        await whatsappMessagesService.enviarMensaje(
+          telefono,
+          MENSAJES.HORARIOS_DISPONIBLES(horariosFormateados)
+        );
+        
+        await this.actualizarConversacion(conversacionId, 'ESPERANDO_HORA', contexto);
       } else {
         await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.NO_HAY_HORARIOS());
         await whatsappMessagesService.enviarMensajeConBotones(
@@ -512,121 +494,7 @@ O escriba *"cancelar"* para salir.`
     }
   }
 
-  /**
-   * 🔧 FIX: Envía horarios limitados a 10 elementos
-   * Si hay más de 10 horarios, muestra los primeros 10 y ofrece opción para ver más
-   */
-  private async enviarHorariosLimitados(
-    telefono: string,
-    horarios: string[],
-    contexto: ConversationContext,
-    conversacionId: string
-  ) {
-    // Si hay 10 o menos horarios, enviarlos todos
-    if (horarios.length <= 10) {
-      await whatsappMessagesService.enviarMensajeConLista(
-        telefono,
-        MENSAJES.HORARIOS_DISPONIBLES_TEXTO(),
-        'Ver horarios',
-        [{
-          title: 'Horarios Disponibles',
-          rows: horarios.map((hora, idx) => ({
-            id: `hora_${idx}`,
-            title: formatearHora(hora),
-            description: `Turno ${idx + 1}`
-          }))
-        }]
-      );
-      
-      await this.actualizarConversacion(conversacionId, 'ESPERANDO_HORA', contexto);
-      return;
-    }
-    
-    // Si hay más de 10 horarios, enviar solo los primeros 10
-    const primerosHorarios = horarios.slice(0, 10);
-    
-    await whatsappMessagesService.enviarMensajeConLista(
-      telefono,
-      MENSAJES.HORARIOS_DISPONIBLES_TEXTO(),
-      'Ver horarios',
-      [{
-        title: 'Horarios Disponibles (Primeros 10)',
-        rows: primerosHorarios.map((hora, idx) => ({
-          id: `hora_${idx}`,
-          title: formatearHora(hora),
-          description: `Turno ${idx + 1}`
-        }))
-      }]
-    );
-    
-    // Guardar los horarios restantes para mostrarlos si el usuario solicita más
-    contexto.horariosRestantes = horarios.slice(10);
-    contexto.mostrandoPrimerosHorarios = true;
-    
-    await whatsappMessagesService.enviarMensajeConBotones(
-      telefono,
-      'Hay más horarios disponibles. ¿Desea verlos?',
-      [
-        { id: 'ver_mas_horarios', title: '✅ Ver más horarios' },
-        { id: 'seleccionar_actual', title: '❌ Seleccionar de los mostrados' }
-      ]
-    );
-    
-    await this.actualizarConversacion(conversacionId, 'ESPERANDO_HORA', contexto);
-  }
-
   private async manejarHora(telefono: string, mensaje: string, contexto: ConversationContext, conversacionId: string) {
-    // Manejar botones para ver más horarios
-    if (mensaje === 'ver_mas_horarios' && contexto.horariosRestantes && contexto.horariosRestantes.length > 0) {
-      // Mostrar los siguientes 10 horarios o menos
-      const siguientesHorarios = contexto.horariosRestantes.slice(0, 10);
-      
-      await whatsappMessagesService.enviarMensajeConLista(
-        telefono,
-        'Más horarios disponibles:',
-        'Ver horarios',
-        [{
-          title: 'Siguientes Horarios',
-          rows: siguientesHorarios.map((hora, idx) => ({
-            id: `hora_${idx + 10}`, // Ajustar el índice para que coincida con el array original
-            title: formatearHora(hora),
-            description: `Turno ${idx + 11}`
-          }))
-        }]
-      );
-      
-      // Actualizar los horarios restantes
-      contexto.horariosRestantes = contexto.horariosRestantes.slice(10);
-      
-      // Si aún hay más horarios, ofrecer la opción de ver más
-      if (contexto.horariosRestantes.length > 0) {
-        await whatsappMessagesService.enviarMensajeConBotones(
-          telefono,
-          'Aún hay más horarios disponibles. ¿Desea verlos?',
-          [
-            { id: 'ver_mas_horarios', title: '✅ Ver más horarios' },
-            { id: 'seleccionar_actual', title: '❌ Seleccionar de los mostrados' }
-          ]
-        );
-      } else {
-        await whatsappMessagesService.enviarMensaje(
-          telefono,
-          'Estos son todos los horarios disponibles. Por favor, seleccione uno de la lista o envíe el número del turno.'
-        );
-      }
-      
-      return;
-    }
-    
-    // Manejar botón para seleccionar de los horarios mostrados
-    if (mensaje === 'seleccionar_actual') {
-      await whatsappMessagesService.enviarMensaje(
-        telefono,
-        'Por favor, seleccione uno de los horarios mostrados o envíe el número del turno.'
-      );
-      return;
-    }
-    
     if (messageParser.esComandoCancelacion(mensaje)) {
       await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.DESPEDIDA());
       await this.finalizarConversacion(conversacionId);
@@ -635,14 +503,12 @@ O escriba *"cancelar"* para salir.`
     
     let opcion: number | null = null;
     
-    // Verificar si es una selección de lista (ID con formato hora_X)
     if (mensaje.startsWith('hora_')) {
       const index = parseInt(mensaje.replace('hora_', ''));
       if (!isNaN(index)) {
         opcion = index + 1;
       }
     } else {
-      // Compatibilidad con selección numérica
       opcion = messageParser.parsearOpcionNumerica(mensaje, contexto.horariosDisponibles?.length || 0);
     }
     
@@ -674,7 +540,6 @@ O escriba *"cancelar"* para salir.`
         const radicado = generarRadicado();
         const servicios = await serviciosService.listarActivos();
         
-        // 🌟 SERVICIO PREDETERMINADO: Buscar "Corte Básico" o usar el primero
         const servicio = servicios.find(s => 
           s.nombre.toLowerCase().includes('corte básico') || 
           s.nombre.toLowerCase().includes('corte basico')
@@ -733,8 +598,12 @@ O escriba *"cancelar"* para salir.`
               contexto.horariosDisponibles = horariosFormateados;
               contexto.horariosRaw = horarios;
               
-              // 🌟 Usar el método corregido para mostrar horarios
-              await this.enviarHorariosLimitados(telefono, horarios, contexto, conversacionId);
+              await whatsappMessagesService.enviarMensaje(
+                telefono,
+                MENSAJES.HORARIOS_DISPONIBLES(horariosFormateados)
+              );
+              
+              await this.actualizarConversacion(conversacionId, 'ESPERANDO_HORA', contexto);
             } else {
               await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.NO_HAY_HORARIOS());
               await whatsappMessagesService.enviarMensajeConBotones(
@@ -817,20 +686,26 @@ O escriba *"cancelar"* para salir.`
       
       contexto.citasDisponibles = citasFormateadas;
       
-      // Usar lista desplegable para mostrar citas
-      await whatsappMessagesService.enviarMensajeConLista(
-        telefono,
-        MENSAJES.MOSTRAR_CITAS_ACTIVAS_TEXTO(),
-        'Ver mis citas',
-        [{
-          title: 'Citas Activas',
-          rows: citasFormateadas.map(cita => ({
-            id: `cita_${cita.radicado}`,
-            title: cita.servicio,
-            description: `${cita.fecha} - ${cita.hora}`
-          }))
-        }]
-      );
+      if (citasActivas.length <= 10) {
+        await whatsappMessagesService.enviarMensajeConLista(
+          telefono,
+          MENSAJES.MOSTRAR_CITAS_ACTIVAS_TEXTO(),
+          'Ver mis citas',
+          [{
+            title: 'Citas Activas',
+            rows: citasFormateadas.map(cita => ({
+              id: `cita_${cita.radicado}`,
+              title: cita.servicio,
+              description: `${cita.fecha} - ${cita.hora}`.substring(0, 72)
+            }))
+          }]
+        );
+      } else {
+        await whatsappMessagesService.enviarMensaje(
+          telefono,
+          MENSAJES.MOSTRAR_CITAS_ACTIVAS(citasFormateadas)
+        );
+      }
       
       await this.actualizarConversacion(conversacionId, 'ESPERANDO_SELECCION_CITA_CANCELAR', contexto);
       
@@ -841,14 +716,12 @@ O escriba *"cancelar"* para salir.`
   }
 
   private async manejarSeleccionCitaCancelar(telefono: string, mensaje: string, contexto: ConversationContext, conversacionId: string) {
-    // Verificar si es una selección de lista (ID con formato cita_XXX)
     if (mensaje.startsWith('cita_')) {
       const radicado = mensaje.replace('cita_', '');
       await this.buscarCitaPorRadicado(telefono, radicado, contexto, conversacionId);
       return;
     }
     
-    // Compatibilidad con selección numérica
     const opcion = messageParser.parsearOpcionNumerica(mensaje, contexto.citasDisponibles?.length || 0);
     
     if (opcion && contexto.citasDisponibles) {
