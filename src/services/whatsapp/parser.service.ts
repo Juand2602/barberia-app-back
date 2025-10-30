@@ -7,23 +7,35 @@ export class MessageParserService {
     
     const textoLower = texto.toLowerCase().trim();
     
-    // Caso: "hoy"
     if (textoLower === 'hoy') {
       return hoy;
     }
     
-    // Caso: "mañana" o "manana"
     if (textoLower === 'mañana' || textoLower === 'manana') {
       const manana = new Date(hoy);
       manana.setDate(manana.getDate() + 1);
       return manana;
     }
     
-    // Caso: "pasado mañana" o "pasado manana"
     if (textoLower === 'pasado mañana' || textoLower === 'pasado manana') {
       const pasadoManana = new Date(hoy);
       pasadoManana.setDate(pasadoManana.getDate() + 2);
       return pasadoManana;
+    }
+    
+    // Formatos de fecha específicos (DD/MM/YYYY, DD-MM-YYYY)
+    const fechaRegex = /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/;
+    const match = textoLower.match(fechaRegex);
+    
+    if (match) {
+      const [, dia, mes, año] = match;
+      const añoCompleto = año.length === 2 ? 2000 + parseInt(año) : parseInt(año);
+      const fecha = new Date(añoCompleto, parseInt(mes) - 1, parseInt(dia));
+      
+      // Validar que la fecha sea válida y no sea anterior a hoy
+      if (!isNaN(fecha.getTime()) && fecha >= hoy) {
+        return fecha;
+      }
     }
     
     // Días de la semana
@@ -53,83 +65,6 @@ export class MessageParserService {
       return fecha;
     }
     
-    // Formatos de fecha específicos (DD/MM/YYYY, DD-MM-YYYY, DD/MM, DD-MM)
-    const fechaRegex = /^(\d{1,2})[\/\-\.](\d{1,2})(?:[\/\-\.](\d{2,4}))?$/;
-    const match = textoLower.match(fechaRegex);
-    
-    if (match) {
-      const [, dia, mes, año] = match;
-      const añoCompleto = año ? (año.length === 2 ? 2000 + parseInt(año) : parseInt(año)) : new Date().getFullYear();
-      const fecha = new Date(añoCompleto, parseInt(mes) - 1, parseInt(dia));
-      
-      // Validar que la fecha sea válida
-      if (!isNaN(fecha.getTime())) {
-        fecha.setHours(0, 0, 0, 0);
-        return fecha;
-      }
-    }
-    
-    // 🌟 NUEVO: Parsear fechas en lenguaje natural: "25 de diciembre", "15 dic", etc.
-    const fechaNatural = this.parsearFechaNatural(textoLower);
-    if (fechaNatural) {
-      return fechaNatural;
-    }
-    
-    return null;
-  }
-
-  /**
-   * 🌟 NUEVO: Parsea fechas en lenguaje natural
-   * Ejemplos: "25 de diciembre", "15 dic", "20 marzo"
-   */
-  private parsearFechaNatural(texto: string): Date | null {
-    const textoNormalizado = this.normalizarRespuesta(texto);
-    
-    const meses: { [key: string]: number } = {
-      'enero': 1, 'ene': 1,
-      'febrero': 2, 'feb': 2,
-      'marzo': 3, 'mar': 3,
-      'abril': 4, 'abr': 4,
-      'mayo': 5, 'may': 5,
-      'junio': 6, 'jun': 6,
-      'julio': 7, 'jul': 7,
-      'agosto': 8, 'ago': 8,
-      'septiembre': 9, 'sep': 9, 'sept': 9,
-      'octubre': 10, 'oct': 10,
-      'noviembre': 11, 'nov': 11,
-      'diciembre': 12, 'dic': 12,
-    };
-
-    // Regex para "25 de diciembre" o "25 diciembre" o "25 dic"
-    const regexNatural = /(\d{1,2})\s*(?:de)?\s*([a-z]+)/i;
-    const match = textoNormalizado.match(regexNatural);
-
-    if (match) {
-      const dia = parseInt(match[1]);
-      const mesTexto = match[2].toLowerCase();
-      
-      const mes = meses[mesTexto];
-      
-      if (mes && dia >= 1 && dia <= 31) {
-        const año = new Date().getFullYear();
-        const fecha = new Date(año, mes - 1, dia);
-        fecha.setHours(0, 0, 0, 0);
-        
-        // Validar que la fecha sea válida
-        if (fecha.getDate() === dia && fecha.getMonth() === mes - 1) {
-          // Si la fecha ya pasó este año, usar el próximo año
-          const hoy = new Date();
-          hoy.setHours(0, 0, 0, 0);
-          
-          if (fecha < hoy) {
-            fecha.setFullYear(año + 1);
-          }
-          
-          return fecha;
-        }
-      }
-    }
-
     return null;
   }
 
