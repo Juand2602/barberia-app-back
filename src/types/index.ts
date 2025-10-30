@@ -8,6 +8,19 @@ export interface WhatsAppMessage {
     body: string;
   };
   type: string;
+  // 🌟 NUEVO: Agregar soporte para mensajes interactivos
+  interactive?: {
+    type: string;
+    button_reply?: {
+      id: string;
+      title: string;
+    };
+    list_reply?: {
+      id: string;
+      title: string;
+      description?: string;
+    };
+  };
 }
 
 export interface WhatsAppWebhookPayload {
@@ -23,6 +36,13 @@ export interface WhatsAppWebhookPayload {
         };
         messages?: WhatsAppMessage[];
         statuses?: any[];
+        // 🌟 OPCIONAL: Agregar contacts si lo necesitas
+        contacts?: Array<{
+          profile: {
+            name: string;
+          };
+          wa_id: string;
+        }>;
       };
       field: string;
     }>;
@@ -35,10 +55,11 @@ export type ConversationState =
   | 'ESPERANDO_BARBERO'
   | 'ESPERANDO_NOMBRE'
   | 'ESPERANDO_FECHA'
+  | 'ESPERANDO_FECHA_ESPECIFICA'  // 🌟 NUEVO - Para cuando selecciona "Otro día"
   | 'ESPERANDO_HORA'
   | 'ESPERANDO_CONFIRMACION'
   | 'ESPERANDO_RADICADO'
-  | 'ESPERANDO_SELECCION_CITA_CANCELAR' // ← NUEVO ESTADO
+  | 'ESPERANDO_SELECCION_CITA_CANCELAR'
   | 'ESPERANDO_CONFIRMACION_CANCELACION'
   | 'ESPERANDO_RESPUESTA_UBICACION'
   | 'ESPERANDO_RESPUESTA_LISTA_PRECIOS'
@@ -58,7 +79,7 @@ export interface ConversationContext {
   citaId?: string;
   horariosDisponibles?: Array<{ numero: number; hora: string }>;
   horariosRaw?: string[];
-  citasDisponibles?: Array<{ // ← NUEVO CAMPO
+  citasDisponibles?: Array<{
     numero: number;
     radicado: string;
     servicio: string;

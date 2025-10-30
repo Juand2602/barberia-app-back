@@ -96,6 +96,9 @@ export class WhatsAppBotService {
       case 'ESPERANDO_FECHA':
         await this.manejarFecha(telefono, mensaje, contexto, conversacionId);
         break;
+      case 'ESPERANDO_FECHA_ESPECIFICA':
+        await this.manejarFechaEspecifica(telefono, mensaje, contexto, conversacionId);
+        break;
       case 'ESPERANDO_HORA':
         await this.manejarHora(telefono, mensaje, contexto, conversacionId);
         break;
@@ -325,7 +328,7 @@ export class WhatsAppBotService {
         [
           { id: 'fecha_hoy', title: '📅 Hoy' },
           { id: 'fecha_manana', title: '📅 Mañana' },
-          { id: 'fecha_pasado', title: '📅 Pasado mañana' }
+          { id: 'fecha_otro_dia', title: '📅 Otro día' }
         ]
       );
       await this.actualizarConversacion(conversacionId, 'ESPERANDO_FECHA', contexto);
@@ -379,15 +382,18 @@ export class WhatsAppBotService {
   private async manejarNombre(telefono: string, mensaje: string, contexto: ConversationContext, conversacionId: string) {
     if (validarNombreCompleto(mensaje)) {
       contexto.nombre = mensaje;
+      
+      // 🌟 3 BOTONES: Hoy, Mañana, Otro día
       await whatsappMessagesService.enviarMensajeConBotones(
         telefono,
         MENSAJES.SOLICITAR_FECHA_TEXTO(),
         [
           { id: 'fecha_hoy', title: '📅 Hoy' },
           { id: 'fecha_manana', title: '📅 Mañana' },
-          { id: 'fecha_pasado', title: '📅 Pasado mañana' }
+          { id: 'fecha_otro_dia', title: '📅 Otro día' }
         ]
       );
+      
       await this.actualizarConversacion(conversacionId, 'ESPERANDO_FECHA', contexto);
     } else {
       await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.NOMBRE_INVALIDO());
@@ -403,64 +409,195 @@ export class WhatsAppBotService {
     } else if (mensaje === 'fecha_manana') {
       fecha = new Date();
       fecha.setDate(fecha.getDate() + 1);
-    } else if (mensaje === 'fecha_pasado') {
-      fecha = new Date();
-      fecha.setDate(fecha.getDate() + 2);
+    } else if (mensaje === 'fecha_otro_dia') {
+      // 🌟 Cambiar al estado de esperar fecha específica
+      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.SOLICITAR_FECHA_ESPECIFICA());
+      await this.actualizarConversacion(conversacionId, 'ESPERANDO_FECHA_ESPECIFICA', contexto);
+      return;
     } else {
-      // Parsear fecha tradicional
+      // Mantener compatibilidad: si escribe texto directamente
       fecha = messageParser.parsearFecha(mensaje);
     }
     
     if (fecha) {
-      const fechaLocal = new Date(fecha);
-      fechaLocal.setHours(0, 0, 0, 0);
+      await this.procesarFechaSeleccionada(telefono, fecha, contexto, conversacionId);
+    } else {
+      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.OPCION_INVALIDA());
+    }
+  }
+
+  // 🌟 NUEVO: Manejar cuando usuario escribe fecha específica
+  private async manejarFechaEspecifica(telefono: string, mensaje: string, contexto: ConversationContext, conversacionId: string) {
+    const fecha = messageParser.parsearFecha(mensaje);
+    
+    if (fecha) {
+      await this.procesarFechaSeleccionada(telefono, fecha, contexto, conversacionId);
+    } else {
+      await whatsappMessagesService.enviarMensaje(
+        telefono,
+        `🧑🏾‍🦲 No entendí la fecha "${mensaje}".
+
+Por favor intente con:
+• Un día de la semana: "viernes", "sábado"
+• Una fecha específica: "25/12/2024"
+• Formato corto: "25 dic", "15 de marzo"
+
+O escriba *"cancelar"* para salir.`
+      );
+    }
+  }
+
+  // 🌟 NUEVO: Método centralizado para procesar fechas
+  private async procesarFechaSeleccionada(
+    telefono: string, 
+    fecha: Date, 
+    contexto: ConversationContext, 
+    conversacionId: string
+  ) {
+    const fechaLocal = new Date(fecha);
+    fechaLocal.setHours(0, 0, 0, 0);
+    
+    // Validar que la fecha no sea en el pasado
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+    
+    if (fechaLocal < hoy) {
+      await whatsappMessagesService.enviarMensaje(
+        telefono,
+        '🧑🏾‍🦲 Lo siento, no puedo agendar citas en fechas pasadas.\n\nPor favor seleccione una fecha válida o escriba *"cancelar"* para salir.'
+      );
+      return;
+    }
+    
+    // Validar que no sea muy lejos en el futuro (máximo 3 meses)
+    const maxFecha = new Date();
+    maxFecha.setMonth(maxFecha.getMonth() + 3);
+    
+    if (fechaLocal > maxFecha) {
+      await whatsappMessagesService.enviarMensaje(
+        telefono,
+        '🧑🏾‍🦲 Solo puede agendar citas con hasta 3 meses de anticipación.\n\nPor favor seleccione una fecha más cercana.'
+      );
+      return;
+    }
+    
+    contexto.fecha = fechaLocal.toISOString();
+    await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.CONSULTANDO_AGENDA());
+    
+    try {
+      const horarios = await citasService.calcularHorariosDisponibles(contexto.empleadoId!, fechaLocal, 30);
       
-      contexto.fecha = fechaLocal.toISOString();
-      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.CONSULTANDO_AGENDA());
-      
-      try {
-        const horarios = await citasService.calcularHorariosDisponibles(contexto.empleadoId!, fechaLocal, 30);
+      if (horarios.length > 0) {
+        const horariosFormateados = horarios.map((hora, idx) => ({ numero: idx + 1, hora: formatearHora(hora) }));
+        contexto.horariosDisponibles = horariosFormateados;
+        contexto.horariosRaw = horarios;
         
-        if (horarios.length > 0) {
-          const horariosFormateados = horarios.map((hora, idx) => ({ numero: idx + 1, hora: formatearHora(hora) }));
-          contexto.horariosDisponibles = horariosFormateados;
-          contexto.horariosRaw = horarios;
-          
-          // Usar lista desplegable para horarios
+        // 🌟 Dividir horarios en secciones
+        const seccionesHorarios = this.dividirHorariosPorPeriodo(horarios);
+        
+        if (horarios.length > 10) {
+          await whatsappMessagesService.enviarMensajeConLista(
+            telefono,
+            MENSAJES.HORARIOS_DISPONIBLES_TEXTO(),
+            'Ver horarios',
+            seccionesHorarios
+          );
+        } else {
           await whatsappMessagesService.enviarMensajeConLista(
             telefono,
             MENSAJES.HORARIOS_DISPONIBLES_TEXTO(),
             'Ver horarios',
             [{
               title: 'Horarios Disponibles',
-              rows: horarios.slice(0, 10).map((hora, idx) => ({
+              rows: horarios.map((hora, idx) => ({
                 id: `hora_${idx}`,
                 title: formatearHora(hora),
                 description: `Turno ${idx + 1}`
               }))
             }]
           );
-          
-          await this.actualizarConversacion(conversacionId, 'ESPERANDO_HORA', contexto);
-        } else {
-          await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.NO_HAY_HORARIOS());
-          await whatsappMessagesService.enviarMensajeConBotones(
-            telefono,
-            '¿Desea intentar con otra fecha?',
-            [
-              { id: 'si_mas', title: '✅ Sí' },
-              { id: 'no_mas', title: '❌ No' }
-            ]
-          );
-          await this.actualizarConversacion(conversacionId, 'ESPERANDO_RESPUESTA_NO_HAY_HORARIOS', contexto);
         }
-      } catch (error) {
-        console.error('Error consultando horarios disponibles:', error);
-        await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.ERROR_SERVIDOR());
+        
+        await this.actualizarConversacion(conversacionId, 'ESPERANDO_HORA', contexto);
+      } else {
+        await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.NO_HAY_HORARIOS());
+        await whatsappMessagesService.enviarMensajeConBotones(
+          telefono,
+          '¿Desea intentar con otra fecha?',
+          [
+            { id: 'si_mas', title: '✅ Sí' },
+            { id: 'no_mas', title: '❌ No' }
+          ]
+        );
+        await this.actualizarConversacion(conversacionId, 'ESPERANDO_RESPUESTA_NO_HAY_HORARIOS', contexto);
       }
-    } else {
-      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.OPCION_INVALIDA());
+    } catch (error) {
+      console.error('Error consultando horarios disponibles:', error);
+      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.ERROR_SERVIDOR());
     }
+  }
+
+  // 🌟 NUEVO: Dividir horarios en secciones por período del día
+  private dividirHorariosPorPeriodo(horarios: string[]): Array<{
+    title: string;
+    rows: Array<{ id: string; title: string; description?: string }>;
+  }> {
+    const manana: Array<{ hora: string; index: number }> = [];
+    const tarde: Array<{ hora: string; index: number }> = [];
+    const noche: Array<{ hora: string; index: number }> = [];
+    
+    horarios.forEach((hora, index) => {
+      const [hh] = hora.split(':');
+      const horas = parseInt(hh);
+      
+      if (horas >= 6 && horas < 12) {
+        manana.push({ hora, index });
+      } else if (horas >= 12 && horas < 18) {
+        tarde.push({ hora, index });
+      } else {
+        noche.push({ hora, index });
+      }
+    });
+    
+    const secciones: Array<{
+      title: string;
+      rows: Array<{ id: string; title: string; description?: string }>;
+    }> = [];
+    
+    if (manana.length > 0) {
+      secciones.push({
+        title: '🌅 MAÑANA (6am - 12pm)',
+        rows: manana.slice(0, 10).map(({ hora, index }) => ({
+          id: `hora_${index}`,
+          title: formatearHora(hora),
+          description: `Turno ${index + 1}`
+        }))
+      });
+    }
+    
+    if (tarde.length > 0) {
+      secciones.push({
+        title: '☀️ TARDE (12pm - 6pm)',
+        rows: tarde.slice(0, 10).map(({ hora, index }) => ({
+          id: `hora_${index}`,
+          title: formatearHora(hora),
+          description: `Turno ${index + 1}`
+        }))
+      });
+    }
+    
+    if (noche.length > 0) {
+      secciones.push({
+        title: '🌙 NOCHE (6pm - 12am)',
+        rows: noche.slice(0, 10).map(({ hora, index }) => ({
+          id: `hora_${index}`,
+          title: formatearHora(hora),
+          description: `Turno ${index + 1}`
+        }))
+      });
+    }
+    
+    return secciones;
   }
 
   private async manejarHora(telefono: string, mensaje: string, contexto: ConversationContext, conversacionId: string) {
@@ -510,7 +647,14 @@ export class WhatsAppBotService {
         
         const radicado = generarRadicado();
         const servicios = await serviciosService.listarActivos();
-        const servicio = servicios[0];
+        
+        // 🌟 SERVICIO PREDETERMINADO: Buscar "Corte Básico" o usar el primero
+        const servicio = servicios.find(s => 
+          s.nombre.toLowerCase().includes('corte básico') || 
+          s.nombre.toLowerCase().includes('corte basico')
+        ) || servicios[0];
+        
+        console.log(`📌 Servicio predeterminado seleccionado: ${servicio.nombre}`);
         
         try {
           await citasService.create({
@@ -563,19 +707,31 @@ export class WhatsAppBotService {
               contexto.horariosDisponibles = horariosFormateados;
               contexto.horariosRaw = horarios;
               
-              await whatsappMessagesService.enviarMensajeConLista(
-                telefono,
-                MENSAJES.HORARIOS_DISPONIBLES_TEXTO(),
-                'Ver horarios',
-                [{
-                  title: 'Horarios Disponibles',
-                  rows: horarios.slice(0, 10).map((hora, idx) => ({
-                    id: `hora_${idx}`,
-                    title: formatearHora(hora),
-                    description: `Turno ${idx + 1}`
-                  }))
-                }]
-              );
+              // 🌟 Dividir horarios en secciones también aquí
+              const seccionesHorarios = this.dividirHorariosPorPeriodo(horarios);
+              
+              if (horarios.length > 10) {
+                await whatsappMessagesService.enviarMensajeConLista(
+                  telefono,
+                  MENSAJES.HORARIOS_DISPONIBLES_TEXTO(),
+                  'Ver horarios',
+                  seccionesHorarios
+                );
+              } else {
+                await whatsappMessagesService.enviarMensajeConLista(
+                  telefono,
+                  MENSAJES.HORARIOS_DISPONIBLES_TEXTO(),
+                  'Ver horarios',
+                  [{
+                    title: 'Horarios Disponibles',
+                    rows: horarios.map((hora, idx) => ({
+                      id: `hora_${idx}`,
+                      title: formatearHora(hora),
+                      description: `Turno ${idx + 1}`
+                    }))
+                  }]
+                );
+              }
               
               await this.actualizarConversacion(conversacionId, 'ESPERANDO_HORA', contexto);
             } else {

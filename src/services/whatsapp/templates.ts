@@ -74,7 +74,21 @@ También puede escribir una *fecha específica* (ej: 25/12/2023) o un *día de l
 Escribe *"cancelar"* en cualquier momento para salir del proceso.`,
 
   SOLICITAR_FECHA_TEXTO: () =>
-    `🧑🏾‍🦲 ¿Para cuando desea su cita?\n\nSelecciona una fecha usando los botones o escribe una fecha específica (ej: 25/12/2023) o un día de la semana (ej: viernes).\n\nEscribe *"cancelar"* en cualquier momento para salir del proceso.`,
+    `🧑🏾‍🦲 ¿Para cuando desea su cita?
+
+Seleccione una opción usando los botones.
+
+Escribe *"cancelar"* en cualquier momento para salir del proceso.`,
+
+  SOLICITAR_FECHA_ESPECIFICA: () =>
+    `🧑🏾‍🦲 Por favor indique la fecha deseada:
+
+Puede escribir:
+📅 Un día de la semana (ej: "viernes", "sábado")
+📅 Una fecha específica (ej: "25/12/2024")
+📅 Formato corto (ej: "25 dic", "15 de marzo")
+
+Escribe *"cancelar"* en cualquier momento para salir del proceso.`,
 
   CONSULTANDO_AGENDA: () =>
     `🧑🏾‍🦲 Un momento por favor, voy a consultar la agenda...`,

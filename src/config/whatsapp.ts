@@ -1,3 +1,5 @@
+// src/config/whatsapp.ts
+
 export const whatsappConfig = {
   apiUrl: process.env.WHATSAPP_API_URL || 'https://graph.facebook.com/v18.0',
   token: process.env.WHATSAPP_TOKEN || '',
@@ -11,6 +13,9 @@ export const barberiaConfig = {
   horaApertura: process.env.BARBERIA_HORA_APERTURA || '09:00',
   horaCierre: process.env.BARBERIA_HORA_CIERRE || '20:00',
   duracionServicioDefecto: 30, // minutos
+  
+  // 🌟 NUEVO: Servicio que se asignará por defecto en las citas de WhatsApp
+  servicioPredeterminado: process.env.SERVICIO_PREDETERMINADO || 'Corte Básico',
 };
 
 export const botConfig = {

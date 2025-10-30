@@ -1,6 +1,6 @@
 // src/services/whatsapp/messages.service.ts
 
-import axios, { AxiosError, AxiosResponse } from 'axios';
+import axios, { AxiosResponse } from 'axios';
 import { whatsappConfig } from '../../config/whatsapp';
 
 // Tipos para botones interactivos
