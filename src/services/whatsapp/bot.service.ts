@@ -495,28 +495,12 @@ O escriba *"cancelar"* para salir.`
         // 🌟 Dividir horarios en secciones
         const seccionesHorarios = this.dividirHorariosPorPeriodo(horarios);
         
-        if (horarios.length > 10) {
-          await whatsappMessagesService.enviarMensajeConLista(
-            telefono,
-            MENSAJES.HORARIOS_DISPONIBLES_TEXTO(),
-            'Ver horarios',
-            seccionesHorarios
-          );
-        } else {
-          await whatsappMessagesService.enviarMensajeConLista(
-            telefono,
-            MENSAJES.HORARIOS_DISPONIBLES_TEXTO(),
-            'Ver horarios',
-            [{
-              title: 'Horarios Disponibles',
-              rows: horarios.map((hora, idx) => ({
-                id: `hora_${idx}`,
-                title: formatearHora(hora),
-                description: `Turno ${idx + 1}`
-              }))
-            }]
-          );
-        }
+        await whatsappMessagesService.enviarMensajeConLista(
+          telefono,
+          MENSAJES.HORARIOS_DISPONIBLES_TEXTO(),
+          'Ver horarios',
+          seccionesHorarios
+        );
         
         await this.actualizarConversacion(conversacionId, 'ESPERANDO_HORA', contexto);
       } else {
@@ -537,59 +521,41 @@ O escriba *"cancelar"* para salir.`
     }
   }
 
-  // REEMPLAZAR el método dividirHorariosPorPeriodo() en bot.service.ts
-// Busca aproximadamente línea 450-520
-
-/**
- * 🔧 FIX: Divide los horarios en secciones por período del día
- * IMPORTANTE: WhatsApp permite máximo 10 items por sección
- */
-private dividirHorariosPorPeriodo(horarios: string[]): Array<{
-  title: string;
-  rows: Array<{ id: string; title: string; description?: string }>;
-}> {
-  const manana: Array<{ hora: string; index: number }> = [];
-  const tarde: Array<{ hora: string; index: number }> = [];
-  const noche: Array<{ hora: string; index: number }> = [];
-  
-  horarios.forEach((hora, index) => {
-    const [hh] = hora.split(':');
-    const horas = parseInt(hh);
-    
-    if (horas >= 6 && horas < 12) {
-      manana.push({ hora, index });
-    } else if (horas >= 12 && horas < 18) {
-      tarde.push({ hora, index });
-    } else {
-      noche.push({ hora, index });
-    }
-  });
-  
-  const secciones: Array<{
+  /**
+   * 🔧 FIX: Divide los horarios en secciones por período del día
+   * IMPORTANTE: WhatsApp permite máximo 10 items por sección
+   */
+  private dividirHorariosPorPeriodo(horarios: string[]): Array<{
     title: string;
     rows: Array<{ id: string; title: string; description?: string }>;
-  }> = [];
-  
-  // 🔧 FIX: Agregar sección de mañana (máximo 10 items)
-  if (manana.length > 0) {
-    secciones.push({
-      title: '🌅 MAÑANA (6am - 12pm)',
-      rows: manana.slice(0, 10).map(({ hora, index }) => ({
-        id: `hora_${index}`,
-        title: formatearHora(hora),
-        description: `Turno ${index + 1}`
-      }))
+  }> {
+    const manana: Array<{ hora: string; index: number }> = [];
+    const tarde: Array<{ hora: string; index: number }> = [];
+    const noche: Array<{ hora: string; index: number }> = [];
+    
+    horarios.forEach((hora, index) => {
+      const [hh] = hora.split(':');
+      const horas = parseInt(hh);
+      
+      if (horas >= 6 && horas < 12) {
+        manana.push({ hora, index });
+      } else if (horas >= 12 && horas < 18) {
+        tarde.push({ hora, index });
+      } else {
+        noche.push({ hora, index });
+      }
     });
-  }
-  
-  // 🔧 FIX: Si hay más de 10 horarios en TARDE, dividir en dos secciones
-  if (tarde.length > 0) {
-    // Primera parte de la tarde (12pm - 3pm)
-    const tardePrimera = tarde.slice(0, 10);
-    if (tardePrimera.length > 0) {
+    
+    const secciones: Array<{
+      title: string;
+      rows: Array<{ id: string; title: string; description?: string }>;
+    }> = [];
+    
+    // 🔧 FIX: Agregar sección de mañana (máximo 10 items)
+    if (manana.length > 0) {
       secciones.push({
-        title: '☀️ TARDE (12pm - 3pm)',
-        rows: tardePrimera.map(({ hora, index }) => ({
+        title: '🌅 MAÑANA (6am - 12pm)',
+        rows: manana.slice(0, 10).map(({ hora, index }) => ({
           id: `hora_${index}`,
           title: formatearHora(hora),
           description: `Turno ${index + 1}`
@@ -597,34 +563,50 @@ private dividirHorariosPorPeriodo(horarios: string[]): Array<{
       });
     }
     
-    // Segunda parte de la tarde (3pm - 6pm) si hay más de 10
-    const tardeSegunda = tarde.slice(10, 20);
-    if (tardeSegunda.length > 0) {
+    // 🔧 FIX: Si hay más de 10 horarios en TARDE, dividir en dos secciones
+    if (tarde.length > 0) {
+      // Primera parte de la tarde (12pm - 3pm)
+      const tardePrimera = tarde.slice(0, 10);
+      if (tardePrimera.length > 0) {
+        secciones.push({
+          title: '☀️ TARDE (12pm - 3pm)',
+          rows: tardePrimera.map(({ hora, index }) => ({
+            id: `hora_${index}`,
+            title: formatearHora(hora),
+            description: `Turno ${index + 1}`
+          }))
+        });
+      }
+      
+      // Segunda parte de la tarde (3pm - 6pm) si hay más de 10
+      const tardeSegunda = tarde.slice(10, 20);
+      if (tardeSegunda.length > 0) {
+        secciones.push({
+          title: '☀️ TARDE (3pm - 6pm)',
+          rows: tardeSegunda.map(({ hora, index }) => ({
+            id: `hora_${index}`,
+            title: formatearHora(hora),
+            description: `Turno ${index + 1}`
+          }))
+        });
+      }
+    }
+    
+    // 🔧 FIX: Agregar sección de noche (máximo 10 items)
+    if (noche.length > 0) {
       secciones.push({
-        title: '☀️ TARDE (3pm - 6pm)',
-        rows: tardeSegunda.map(({ hora, index }) => ({
+        title: '🌙 NOCHE (6pm - 12am)',
+        rows: noche.slice(0, 10).map(({ hora, index }) => ({
           id: `hora_${index}`,
           title: formatearHora(hora),
           description: `Turno ${index + 1}`
         }))
       });
     }
+    
+    return secciones;
   }
-  
-  // 🔧 FIX: Agregar sección de noche (máximo 10 items)
-  if (noche.length > 0) {
-    secciones.push({
-      title: '🌙 NOCHE (6pm - 12am)',
-      rows: noche.slice(0, 10).map(({ hora, index }) => ({
-        id: `hora_${index}`,
-        title: formatearHora(hora),
-        description: `Turno ${index + 1}`
-      }))
-    });
-  }
-  
-  return secciones;
-}
+
   private async manejarHora(telefono: string, mensaje: string, contexto: ConversationContext, conversacionId: string) {
     if (messageParser.esComandoCancelacion(mensaje)) {
       await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.DESPEDIDA());
@@ -735,28 +717,12 @@ private dividirHorariosPorPeriodo(horarios: string[]): Array<{
               // 🌟 Dividir horarios en secciones también aquí
               const seccionesHorarios = this.dividirHorariosPorPeriodo(horarios);
               
-              if (horarios.length > 10) {
-                await whatsappMessagesService.enviarMensajeConLista(
-                  telefono,
-                  MENSAJES.HORARIOS_DISPONIBLES_TEXTO(),
-                  'Ver horarios',
-                  seccionesHorarios
-                );
-              } else {
-                await whatsappMessagesService.enviarMensajeConLista(
-                  telefono,
-                  MENSAJES.HORARIOS_DISPONIBLES_TEXTO(),
-                  'Ver horarios',
-                  [{
-                    title: 'Horarios Disponibles',
-                    rows: horarios.map((hora, idx) => ({
-                      id: `hora_${idx}`,
-                      title: formatearHora(hora),
-                      description: `Turno ${idx + 1}`
-                    }))
-                  }]
-                );
-              }
+              await whatsappMessagesService.enviarMensajeConLista(
+                telefono,
+                MENSAJES.HORARIOS_DISPONIBLES_TEXTO(),
+                'Ver horarios',
+                seccionesHorarios
+              );
               
               await this.actualizarConversacion(conversacionId, 'ESPERANDO_HORA', contexto);
             } else {
