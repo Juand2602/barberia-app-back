@@ -492,17 +492,8 @@ O escriba *"cancelar"* para salir.`
         contexto.horariosDisponibles = horariosFormateados;
         contexto.horariosRaw = horarios;
         
-        // 🌟 Dividir horarios en secciones
-        const seccionesHorarios = this.dividirHorariosPorPeriodo(horarios);
-        
-        await whatsappMessagesService.enviarMensajeConLista(
-          telefono,
-          MENSAJES.HORARIOS_DISPONIBLES_TEXTO(),
-          'Ver horarios',
-          seccionesHorarios
-        );
-        
-        await this.actualizarConversacion(conversacionId, 'ESPERANDO_HORA', contexto);
+        // 🌟 CORRECCIÓN: Usar el nuevo método para enviar horarios limitados
+        await this.enviarHorariosLimitados(telefono, horarios, contexto, conversacionId);
       } else {
         await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.NO_HAY_HORARIOS());
         await whatsappMessagesService.enviarMensajeConBotones(
@@ -522,92 +513,120 @@ O escriba *"cancelar"* para salir.`
   }
 
   /**
-   * 🔧 FIX: Divide los horarios en secciones por período del día
-   * IMPORTANTE: WhatsApp permite máximo 10 items por sección
+   * 🔧 FIX: Envía horarios limitados a 10 elementos
+   * Si hay más de 10 horarios, muestra los primeros 10 y ofrece opción para ver más
    */
-  private dividirHorariosPorPeriodo(horarios: string[]): Array<{
-    title: string;
-    rows: Array<{ id: string; title: string; description?: string }>;
-  }> {
-    const manana: Array<{ hora: string; index: number }> = [];
-    const tarde: Array<{ hora: string; index: number }> = [];
-    const noche: Array<{ hora: string; index: number }> = [];
-    
-    horarios.forEach((hora, index) => {
-      const [hh] = hora.split(':');
-      const horas = parseInt(hh);
-      
-      if (horas >= 6 && horas < 12) {
-        manana.push({ hora, index });
-      } else if (horas >= 12 && horas < 18) {
-        tarde.push({ hora, index });
-      } else {
-        noche.push({ hora, index });
-      }
-    });
-    
-    const secciones: Array<{
-      title: string;
-      rows: Array<{ id: string; title: string; description?: string }>;
-    }> = [];
-    
-    // 🔧 FIX: Agregar sección de mañana (máximo 10 items)
-    if (manana.length > 0) {
-      secciones.push({
-        title: '🌅 MAÑANA (6am - 12pm)',
-        rows: manana.slice(0, 10).map(({ hora, index }) => ({
-          id: `hora_${index}`,
-          title: formatearHora(hora),
-          description: `Turno ${index + 1}`
-        }))
-      });
-    }
-    
-    // 🔧 FIX: Si hay más de 10 horarios en TARDE, dividir en dos secciones
-    if (tarde.length > 0) {
-      // Primera parte de la tarde (12pm - 3pm)
-      const tardePrimera = tarde.slice(0, 10);
-      if (tardePrimera.length > 0) {
-        secciones.push({
-          title: '☀️ TARDE (12pm - 3pm)',
-          rows: tardePrimera.map(({ hora, index }) => ({
-            id: `hora_${index}`,
+  private async enviarHorariosLimitados(
+    telefono: string,
+    horarios: string[],
+    contexto: ConversationContext,
+    conversacionId: string
+  ) {
+    // Si hay 10 o menos horarios, enviarlos todos
+    if (horarios.length <= 10) {
+      await whatsappMessagesService.enviarMensajeConLista(
+        telefono,
+        MENSAJES.HORARIOS_DISPONIBLES_TEXTO(),
+        'Ver horarios',
+        [{
+          title: 'Horarios Disponibles',
+          rows: horarios.map((hora, idx) => ({
+            id: `hora_${idx}`,
             title: formatearHora(hora),
-            description: `Turno ${index + 1}`
+            description: `Turno ${idx + 1}`
           }))
-        });
-      }
+        }]
+      );
       
-      // Segunda parte de la tarde (3pm - 6pm) si hay más de 10
-      const tardeSegunda = tarde.slice(10, 20);
-      if (tardeSegunda.length > 0) {
-        secciones.push({
-          title: '☀️ TARDE (3pm - 6pm)',
-          rows: tardeSegunda.map(({ hora, index }) => ({
-            id: `hora_${index}`,
-            title: formatearHora(hora),
-            description: `Turno ${index + 1}`
-          }))
-        });
-      }
+      await this.actualizarConversacion(conversacionId, 'ESPERANDO_HORA', contexto);
+      return;
     }
     
-    // 🔧 FIX: Agregar sección de noche (máximo 10 items)
-    if (noche.length > 0) {
-      secciones.push({
-        title: '🌙 NOCHE (6pm - 12am)',
-        rows: noche.slice(0, 10).map(({ hora, index }) => ({
-          id: `hora_${index}`,
+    // Si hay más de 10 horarios, enviar solo los primeros 10
+    const primerosHorarios = horarios.slice(0, 10);
+    
+    await whatsappMessagesService.enviarMensajeConLista(
+      telefono,
+      MENSAJES.HORARIOS_DISPONIBLES_TEXTO(),
+      'Ver horarios',
+      [{
+        title: 'Horarios Disponibles (Primeros 10)',
+        rows: primerosHorarios.map((hora, idx) => ({
+          id: `hora_${idx}`,
           title: formatearHora(hora),
-          description: `Turno ${index + 1}`
+          description: `Turno ${idx + 1}`
         }))
-      });
-    }
+      }]
+    );
     
-    return secciones;
+    // Guardar los horarios restantes para mostrarlos si el usuario solicita más
+    contexto.horariosRestantes = horarios.slice(10);
+    contexto.mostrandoPrimerosHorarios = true;
+    
+    await whatsappMessagesService.enviarMensajeConBotones(
+      telefono,
+      'Hay más horarios disponibles. ¿Desea verlos?',
+      [
+        { id: 'ver_mas_horarios', title: '✅ Ver más horarios' },
+        { id: 'seleccionar_actual', title: '❌ Seleccionar de los mostrados' }
+      ]
+    );
+    
+    await this.actualizarConversacion(conversacionId, 'ESPERANDO_HORA', contexto);
   }
 
   private async manejarHora(telefono: string, mensaje: string, contexto: ConversationContext, conversacionId: string) {
+    // Manejar botones para ver más horarios
+    if (mensaje === 'ver_mas_horarios' && contexto.horariosRestantes && contexto.horariosRestantes.length > 0) {
+      // Mostrar los siguientes 10 horarios o menos
+      const siguientesHorarios = contexto.horariosRestantes.slice(0, 10);
+      
+      await whatsappMessagesService.enviarMensajeConLista(
+        telefono,
+        'Más horarios disponibles:',
+        'Ver horarios',
+        [{
+          title: 'Siguientes Horarios',
+          rows: siguientesHorarios.map((hora, idx) => ({
+            id: `hora_${idx + 10}`, // Ajustar el índice para que coincida con el array original
+            title: formatearHora(hora),
+            description: `Turno ${idx + 11}`
+          }))
+        }]
+      );
+      
+      // Actualizar los horarios restantes
+      contexto.horariosRestantes = contexto.horariosRestantes.slice(10);
+      
+      // Si aún hay más horarios, ofrecer la opción de ver más
+      if (contexto.horariosRestantes.length > 0) {
+        await whatsappMessagesService.enviarMensajeConBotones(
+          telefono,
+          'Aún hay más horarios disponibles. ¿Desea verlos?',
+          [
+            { id: 'ver_mas_horarios', title: '✅ Ver más horarios' },
+            { id: 'seleccionar_actual', title: '❌ Seleccionar de los mostrados' }
+          ]
+        );
+      } else {
+        await whatsappMessagesService.enviarMensaje(
+          telefono,
+          'Estos son todos los horarios disponibles. Por favor, seleccione uno de la lista o envíe el número del turno.'
+        );
+      }
+      
+      return;
+    }
+    
+    // Manejar botón para seleccionar de los horarios mostrados
+    if (mensaje === 'seleccionar_actual') {
+      await whatsappMessagesService.enviarMensaje(
+        telefono,
+        'Por favor, seleccione uno de los horarios mostrados o envíe el número del turno.'
+      );
+      return;
+    }
+    
     if (messageParser.esComandoCancelacion(mensaje)) {
       await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.DESPEDIDA());
       await this.finalizarConversacion(conversacionId);
@@ -714,17 +733,8 @@ O escriba *"cancelar"* para salir.`
               contexto.horariosDisponibles = horariosFormateados;
               contexto.horariosRaw = horarios;
               
-              // 🌟 Dividir horarios en secciones también aquí
-              const seccionesHorarios = this.dividirHorariosPorPeriodo(horarios);
-              
-              await whatsappMessagesService.enviarMensajeConLista(
-                telefono,
-                MENSAJES.HORARIOS_DISPONIBLES_TEXTO(),
-                'Ver horarios',
-                seccionesHorarios
-              );
-              
-              await this.actualizarConversacion(conversacionId, 'ESPERANDO_HORA', contexto);
+              // 🌟 Usar el método corregido para mostrar horarios
+              await this.enviarHorariosLimitados(telefono, horarios, contexto, conversacionId);
             } else {
               await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.NO_HAY_HORARIOS());
               await whatsappMessagesService.enviarMensajeConBotones(

@@ -79,6 +79,8 @@ export interface ConversationContext {
   citaId?: string;
   horariosDisponibles?: Array<{ numero: number; hora: string }>;
   horariosRaw?: string[];
+  horariosRestantes?: string[]; // 🌟 NUEVO: Para almacenar horarios restantes
+  mostrandoPrimerosHorarios?: boolean; // 🌟 NUEVO: Para saber si estamos mostrando los primeros horarios
   citasDisponibles?: Array<{
     numero: number;
     radicado: string;
