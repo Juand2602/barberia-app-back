@@ -81,12 +81,13 @@ Seleccione una opción usando los botones.
 Escribe *"cancelar"* en cualquier momento para salir del proceso.`,
 
   SOLICITAR_FECHA_ESPECIFICA: () =>
-    `🧑🏾‍🦲 Por favor indique la fecha deseada:
+    `🧑🏾‍🦲 Por favor indique la *fecha* deseada:
 
 Puede escribir:
-📅 Un día de la semana (ej: "viernes", "sábado")
-📅 Una fecha específica (ej: "25/12/2024")
-📅 Formato corto (ej: "25 dic", "15 de marzo")
+
+📅 Un día de la semana (ej: *"viernes", "sábado"*)
+
+📅 Una fecha específica (ej: *"25/12/2024"*)
 
 Escribe *"cancelar"* en cualquier momento para salir del proceso.`,
 
