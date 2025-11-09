@@ -1,4 +1,4 @@
-// src/controllers/dashboard.controller.ts - NUEVO
+// src/controllers/dashboard.controller.ts - CORREGIDO
 
 import { Request, Response } from 'express';
 import { citasService } from '../services/citas.service';
@@ -70,13 +70,14 @@ export class DashboardController {
         success: true,
         fecha: hoy,
         stats,
-        nuevas: nuevas.map(this.formatearCita),
-        confirmadas: confirmadas.map(this.formatearCita),
-        completadas: completadas.map(this.formatearCita),
-        canceladas: canceladas.map(this.formatearCita),
+        nuevas: nuevas.map(c => this.formatearCita(c)), // 🔧 CORREGIDO: bind this
+        confirmadas: confirmadas.map(c => this.formatearCita(c)), // 🔧 CORREGIDO
+        completadas: completadas.map(c => this.formatearCita(c)), // 🔧 CORREGIDO
+        canceladas: canceladas.map(c => this.formatearCita(c)), // 🔧 CORREGIDO
         porBarbero,
       });
     } catch (error: any) {
+      console.error('❌ Error en getCitasHoy:', error); // 🔧 AGREGADO: log
       res.status(500).json({
         success: false,
         message: 'Error al obtener citas del día',
@@ -104,7 +105,7 @@ export class DashboardController {
       res.json({
         success: true,
         count: pendientes.length,
-        citas: pendientes.map(this.formatearCita),
+        citas: pendientes.map(c => this.formatearCita(c)), // 🔧 CORREGIDO
       });
     } catch (error: any) {
       res.status(500).json({
@@ -154,7 +155,9 @@ export class DashboardController {
           citas: citas.length,
           completadas: citas.filter(c => c.estado === 'COMPLETADA').length,
           canceladas: citas.filter(c => c.estado === 'CANCELADA').length,
-          tasa_completadas: ((citas.filter(c => c.estado === 'COMPLETADA').length / citas.length) * 100).toFixed(1),
+          tasa_completadas: citas.length > 0 
+            ? ((citas.filter(c => c.estado === 'COMPLETADA').length / citas.length) * 100).toFixed(1)
+            : '0.0',
         },
       });
     } catch (error: any) {
@@ -166,7 +169,8 @@ export class DashboardController {
     }
   }
 
-  private formatearCita(cita: any) {
+  // 🔧 CORREGIDO: Cambiar a arrow function para mantener contexto
+  private formatearCita = (cita: any) => {
     return {
       id: cita.id,
       radicado: cita.radicado,
