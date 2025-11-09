@@ -70,11 +70,11 @@ export class DashboardController {
         success: true,
         fecha: hoy,
         stats,
-        nuevas: nuevas.map(c => this.formatearCita(c)), // 🔧 CORREGIDO: bind this
-        confirmadas: confirmadas.map(c => this.formatearCita(c)), // 🔧 CORREGIDO
-        completadas: completadas.map(c => this.formatearCita(c)), // 🔧 CORREGIDO
-        canceladas: canceladas.map(c => this.formatearCita(c)), // 🔧 CORREGIDO
-        porBarbero,
+       nuevas: nuevas.map(this.formatearCita.bind(this)),
+       confirmadas: confirmadas.map(this.formatearCita.bind(this)),
+       completadas: completadas.map(this.formatearCita.bind(this)),
+       canceladas: canceladas.map(this.formatearCita.bind(this)),
+       porBarbero,
       });
     } catch (error: any) {
       console.error('❌ Error en getCitasHoy:', error); // 🔧 AGREGADO: log
@@ -170,7 +170,7 @@ export class DashboardController {
   }
 
   // 🔧 CORREGIDO: Cambiar a arrow function para mantener contexto
-  private formatearCita = (cita: any) => {
+  private formatearCita(cita: any) {
     return {
       id: cita.id,
       radicado: cita.radicado,
