@@ -1,7 +1,7 @@
-// src/services/whatsapp/bot.service.ts - MODIFICADO
+// src/services/whatsapp/bot.service.ts - CON MOSAICO A+B
 // 🎯 CAMBIOS:
 // 1. ✅ Eliminadas todas las opciones numéricas del menú
-// 2. ✅ Agregado envío de fotos de barberos al seleccionar "Agendar cita"
+// 2. ✅ Mosaico de barberos (Opción A) + Fotos individuales opcionales (Opción B)
 // 3. ✅ Integración con sistema de notificaciones
 
 import prisma from '../../config/database';
@@ -12,7 +12,7 @@ import { clientesService } from '../clientes.service';
 import { serviciosService } from '../servicios.service';
 import { empleadosService } from '../empleados.service';
 import { citasService } from '../citas.service';
-import { notificacionesService } from '../notificaciones.service'; // 🌟 NUEVO
+import { notificacionesService } from '../notificaciones.service';
 import { ConversationState, ConversationContext } from '../../types';
 import { botConfig } from '../../config/whatsapp';
 
@@ -89,6 +89,9 @@ export class WhatsAppBotService {
     switch (estado) {
       case 'INICIAL':
         await this.manejarInicial(telefono, mensaje, contexto, conversacionId);
+        break;
+      case 'ESPERANDO_VER_FOTOS_BARBEROS': // 🌟 NUEVO
+        await this.manejarVerFotosBarberos(telefono, mensaje, contexto, conversacionId);
         break;
       case 'ESPERANDO_BARBERO':
         await this.manejarSeleccionBarbero(telefono, mensaje, contexto, conversacionId);
@@ -175,46 +178,47 @@ export class WhatsAppBotService {
       return;
     }
 
-    // ✅ Opción 3: Agendar cita - 🌟 NUEVO: Enviar fotos de barberos
+    // ✅ Opción 3: Agendar cita - 🌟 NUEVO: Mosaico (Opción A) + Fotos opcionales (Opción B)
     if (mensaje === 'menu_agendar') {
       try {
         const barberos = await empleadosService.getAll(true);
         
-        // 🌟 NUEVO: Enviar foto de cada barbero antes de mostrar la lista
-        await whatsappMessagesService.enviarMensaje(
-          telefono,
-          '💈 *Nuestros Profesionales*\n\nA continuación te mostramos nuestro equipo:'
-        );
-
-        // Enviar foto de cada barbero con su información
-        for (const barbero of barberos) {
-          if (barbero.fotoUrl) {
-            await whatsappMessagesService.enviarImagen(
-              telefono,
-              barbero.fotoUrl,
-              `👨‍🦲 *${barbero.nombre}*\n${barbero.especialidades?.length ? `✂️ ${barbero.especialidades.join(', ')}` : ''}`
-            );
-          }
+        // 📸 OPCIÓN A: Enviar UNA imagen mosaico
+        const imagenMosaico = process.env.BARBEROS_MOSAICO_URL;
+        
+        if (imagenMosaico) {
+          await whatsappMessagesService.enviarImagen(
+            telefono,
+            imagenMosaico,
+            '💈 *Nuestro Equipo de Profesionales*\n\nSelecciona tu barbero de confianza:'
+          );
+        } else {
+          // Fallback si no hay mosaico configurado
+          await whatsappMessagesService.enviarMensaje(
+            telefono,
+            '💈 *Nuestro Equipo de Profesionales*\n\nSelecciona tu barbero de confianza:'
+          );
         }
-
-        // Mostrar lista interactiva de barberos
-        await whatsappMessagesService.enviarMensajeConLista(
+        
+        // Botón para ver fotos individuales (Opción B)
+        await whatsappMessagesService.enviarMensajeConBotones(
           telefono,
-          MENSAJES.ELEGIR_BARBERO_TEXTO(),
-          'Ver barberos',
-          [{
-            title: 'Nuestros Profesionales',
-            rows: barberos.map((barbero) => ({
-              id: `barbero_${barbero.id}`,
-              title: barbero.nombre.substring(0, 24), // Máximo 24 caracteres
-              description: barbero.especialidades?.length 
-                ? barbero.especialidades.join(', ').substring(0, 72) 
-                : 'Barbero profesional'
-            }))
-          }]
+          '¿Deseas ver las fotos individuales de cada barbero?',
+          [
+            { id: 'ver_fotos_si', title: '👀 Sí, ver fotos' },
+            { id: 'ver_fotos_no', title: '➡️ No, continuar' }
+          ]
         );
         
-        await this.actualizarConversacion(conversacionId, 'ESPERANDO_BARBERO', contexto);
+        // Guardar barberos en contexto
+        contexto.barberos = barberos.map(b => ({
+          id: b.id,
+          nombre: b.nombre,
+          fotoUrl: b.fotoUrl,
+          especialidades: b.especialidades
+        }));
+        
+        await this.actualizarConversacion(conversacionId, 'ESPERANDO_VER_FOTOS_BARBEROS', contexto);
       } catch (error) {
         console.error('Error obteniendo barberos:', error);
         await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.ERROR_SERVIDOR());
@@ -239,6 +243,65 @@ export class WhatsAppBotService {
     // Si no reconoce el mensaje, mostrar opción inválida
     await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.OPCION_INVALIDA());
     await this.enviarMenuPrincipal(telefono);
+  }
+
+  // 🌟 NUEVO: Manejar respuesta de ver fotos (Opción B)
+  private async manejarVerFotosBarberos(
+    telefono: string, 
+    mensaje: string, 
+    contexto: ConversationContext, 
+    conversacionId: string
+  ) {
+    if (mensaje === 'ver_fotos_si') {
+      // 📸 OPCIÓN B: Enviar fotos individuales
+      const barberos = contexto.barberos || [];
+      
+      for (const barbero of barberos) {
+        if (barbero.fotoUrl) {
+          const especialidadesTexto = barbero.especialidades 
+            ? `✂️ ${Array.isArray(barbero.especialidades) ? barbero.especialidades.join(', ') : barbero.especialidades}`
+            : '';
+          
+          await whatsappMessagesService.enviarImagen(
+            telefono,
+            barbero.fotoUrl,
+            `👨‍🦲 *${barbero.nombre}*\n${especialidadesTexto}`
+          );
+          
+          // Pequeña pausa entre fotos (500ms)
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
+    } else if (mensaje === 'ver_fotos_no') {
+      // Usuario no quiere ver fotos individuales, continuar directo
+      await whatsappMessagesService.enviarMensaje(
+        telefono,
+        '✅ Perfecto, continuemos con tu cita'
+      );
+    }
+    
+    // Mostrar lista de barberos
+    const barberos = contexto.barberos || await empleadosService.getAll(true);
+    
+    await whatsappMessagesService.enviarMensajeConLista(
+      telefono,
+      MENSAJES.ELEGIR_BARBERO_TEXTO(),
+      'Ver barberos',
+      [{
+        title: 'Nuestros Profesionales',
+        rows: barberos.map((barbero: any) => ({
+          id: `barbero_${barbero.id}`,
+          title: barbero.nombre.substring(0, 24),
+          description: barbero.especialidades 
+            ? (Array.isArray(barbero.especialidades) 
+                ? barbero.especialidades.join(', ').substring(0, 72)
+                : String(barbero.especialidades).substring(0, 72))
+            : 'Barbero profesional'
+        }))
+      }]
+    );
+    
+    await this.actualizarConversacion(conversacionId, 'ESPERANDO_BARBERO', contexto);
   }
 
   private async manejarRespuestaUbicacion(telefono: string, mensaje: string, contexto: ConversationContext, conversacionId: string) {

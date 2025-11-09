@@ -55,7 +55,8 @@ export type ConversationState =
   | 'ESPERANDO_BARBERO'
   | 'ESPERANDO_NOMBRE'
   | 'ESPERANDO_FECHA'
-  | 'ESPERANDO_FECHA_ESPECIFICA'  // 🌟 NUEVO - Para cuando selecciona "Otro día"
+  | 'ESPERANDO_FECHA_ESPECIFICA'
+  | 'ESPERANDO_VER_FOTOS_BARBEROS'   // 🌟 NUEVO - Para cuando selecciona "Otro día"
   | 'ESPERANDO_HORA'
   | 'ESPERANDO_CONFIRMACION'
   | 'ESPERANDO_RADICADO'
@@ -85,6 +86,12 @@ export interface ConversationContext {
     servicio: string;
     fecha: string;
     hora: string;
+  }>;
+  barberos?: Array<{  // 🌟 NUEVO
+    id: string;
+    nombre: string;
+    fotoUrl?: string | null; // 🔧 Permitir null también
+    especialidades?: string | null; // 🔧 Permitir null también
   }>;
   flujo?: string;
 }

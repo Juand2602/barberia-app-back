@@ -8,12 +8,7 @@ export const MENSAJES = {
 
 *¿Necesitas información de...?*
 
-Selecciona una opción usando los botones o escribe el número:
-
-1️⃣ Dónde estamos
-2️⃣ Lista de precios
-3️⃣ Agendar una cita
-4️⃣ Cancelar una cita
+Selecciona una opción usando los botones:
 
 Escribe *"cancelar"* en cualquier momento para salir del proceso.`,
 
