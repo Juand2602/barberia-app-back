@@ -33,16 +33,17 @@ model Empleado {
   id              String   @id @default(uuid())
   nombre          String
   telefono        String
+  fotoUrl         String?  // 🌟 NUEVO: URL de la foto del barbero
   especialidades  String
   activo          Boolean  @default(true)
   fechaIngreso    DateTime @default(now())
   porcentajeComision Float @default(50.0)
   
-  // ✅ NUEVO: Integración con Google Calendar
-  googleCalendarId    String?  // ID del calendario de Google
-  googleAccessToken   String?  @db.Text  // Token de acceso
-  googleRefreshToken  String?  @db.Text  // Token de refresh
-  googleTokenExpiry   DateTime? // Fecha de expiración del token
+  // Integración con Google Calendar
+  googleCalendarId    String?
+  googleAccessToken   String?  @db.Text
+  googleRefreshToken  String?  @db.Text
+  googleTokenExpiry   DateTime?
   calendarioSincronizado Boolean @default(false)
   
   horarioLunes    String?
@@ -95,7 +96,6 @@ model Cita {
   notas           String?
   motivoCancelacion String?
   
-  // ✅ NUEVO: ID del evento en Google Calendar
   googleEventId   String?
   
   cliente         Cliente  @relation(fields: [clienteId], references: [id])
@@ -118,7 +118,7 @@ model Conversacion {
   clienteId       String
   telefono        String
   estado          String   @default("INICIAL")
-  contexto        String   // JSON con datos temporales
+  contexto        String
   lastActivity    DateTime @default(now())
   activa          Boolean  @default(true)
   
@@ -134,14 +134,14 @@ model Conversacion {
 // ==================== TRANSACCIONES ====================
 model Transaccion {
   id              String   @id @default(uuid())
-  tipo            String   // INGRESO, EGRESO
+  tipo            String
   clienteId       String?
   empleadoId      String?
   citaId          String?
   fecha           DateTime @default(now())
   total           Float
-  metodoPago      String   // EFECTIVO, TRANSFERENCIA, PENDIENTE
-  estadoPago      String   @default("PENDIENTE") // PENDIENTE, PAGADO
+  metodoPago      String
+  estadoPago      String   @default("PENDIENTE")
   referencia      String?
   concepto        String?
   categoria       String?
@@ -160,7 +160,7 @@ model Transaccion {
   @@index([metodoPago])
   @@index([estadoPago])
   @@index([citaId])
-  @@index([empleadoId, estadoPago, tipo]) // ✅ NUEVO: Para cálculo de comisiones
+  @@index([empleadoId, estadoPago, tipo])
 }
 
 model TransaccionItem {
@@ -180,31 +180,30 @@ model TransaccionItem {
 }
 
 // ==================== PAGOS DE COMISIÓN ====================
-// ✅ NUEVO MODELO
 model PagoComision {
   id              String   @id @default(uuid())
   empleadoId      String
-  periodo         String   // "2025-01" para enero 2025 (formato YYYY-MM)
+  periodo         String
   fechaPago       DateTime @default(now())
-  fechaInicio     DateTime // Inicio del periodo calculado
-  fechaFin        DateTime // Fin del periodo calculado
-  totalVentas     Float    // Total de ventas del empleado en el periodo
-  porcentaje      Float    // Porcentaje aplicado
-  montoComision   Float    // Monto calculado de comisión
-  montoPagado     Float    // Monto realmente pagado (puede ser diferente)
-  diferencia      Float    // Ajustes o descuentos
-  metodoPago      String   // EFECTIVO, TRANSFERENCIA
-  referencia      String?  // Número de transferencia
+  fechaInicio     DateTime
+  fechaFin        DateTime
+  totalVentas     Float
+  porcentaje      Float
+  montoComision   Float
+  montoPagado     Float
+  diferencia      Float
+  metodoPago      String
+  referencia      String?
   notas           String?
-  transaccionIds  String   // JSON array con IDs de transacciones incluidas
-  cantidadTransacciones Int // Cantidad de transacciones incluidas
+  transaccionIds  String
+  cantidadTransacciones Int
   
   empleado        Empleado @relation(fields: [empleadoId], references: [id])
   
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   
-  @@unique([empleadoId, periodo]) // No se puede pagar dos veces el mismo periodo
+  @@unique([empleadoId, periodo])
   @@index([empleadoId, fechaPago])
   @@index([periodo])
 }
@@ -242,7 +241,7 @@ model AperturaCaja {
   usuarioId    Int?
   fecha        DateTime @default(now())
   montoInicial Float
-  estado       String   @default("ABIERTA") // "ABIERTA" | "CERRADA"
+  estado       String   @default("ABIERTA")
   notas        String? 
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt

@@ -1,4 +1,5 @@
-// src/services/whatsapp/messages.service.ts
+// src/services/whatsapp/messages.service.ts - MODIFICADO
+// 🌟 NUEVO: Agregado método para enviar imágenes
 
 import axios, { AxiosResponse } from 'axios';
 import { whatsappConfig } from '../../config/whatsapp';
@@ -51,6 +52,39 @@ export class WhatsAppMessagesService {
       });
     } catch (error) {
       console.error(`Error al enviar mensaje a ${telefono}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * 🌟 NUEVO: Envía una imagen con caption opcional
+   * @param telefono - Número de WhatsApp del destinatario
+   * @param imageUrl - URL de la imagen (debe ser accesible públicamente)
+   * @param caption - Texto opcional que acompaña la imagen
+   */
+  async enviarImagen(
+    telefono: string, 
+    imageUrl: string, 
+    caption?: string
+  ): Promise<any> {
+    try {
+      const payload: any = {
+        messaging_product: 'whatsapp',
+        to: telefono,
+        type: 'image',
+        image: {
+          link: imageUrl,
+        },
+      };
+
+      // Agregar caption si se proporciona (máximo 1024 caracteres)
+      if (caption) {
+        payload.image.caption = caption.substring(0, 1024);
+      }
+
+      return await this.sendRequest('messages', payload);
+    } catch (error) {
+      console.error(`Error al enviar imagen a ${telefono}:`, error);
       throw error;
     }
   }

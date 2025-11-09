@@ -5,6 +5,7 @@ import { empleadosService } from './empleados.service';
 import { transaccionesService } from './transacciones.service';
 import { serviciosService } from './servicios.service';
 import { googleCalendarService } from './google-calendar.service'; // ✅ NUEVO
+import { notificacionesService } from './notificaciones.service';
 
 export class CitasService {
   // Obtener todas las citas con filtros
@@ -491,57 +492,93 @@ export class CitasService {
   /**
    * Calcula los horarios disponibles considerando la duración de cada cita.
    */
-  async calcularHorariosDisponibles(empleadoId: string, fecha: Date, duracionMinutos: number = 30) {
-    const citasExistentes = await this.getByFecha(fecha, empleadoId).then(citas => 
-      citas.filter(c => ['PENDIENTE', 'CONFIRMADA'].includes(c.estado))
-    );
-    
-    const empleado = await empleadosService.getById(empleadoId);
-    if (!empleado) return [];
+ async calcularHorariosDisponibles(
+  empleadoId: string, 
+  fecha: Date, 
+  duracionMinutos: number = 30
+): Promise<string[]> {
+  // 1. Obtener citas existentes en el sistema
+  const citasExistentes = await this.getByFecha(fecha, empleadoId).then(citas => 
+    citas.filter(c => ['PENDIENTE', 'CONFIRMADA'].includes(c.estado))
+  );
+  
+  const empleado = await empleadosService.getById(empleadoId);
+  if (!empleado) return [];
 
-    const diaSemana = fecha.getDay();
-    const diasMap: any = {
-      0: 'horarioDomingo', 1: 'horarioLunes', 2: 'horarioMartes',
-      3: 'horarioMiercoles', 4: 'horarioJueves', 5: 'horarioViernes', 6: 'horarioSabado',
-    };
+  // 2. Obtener horario laboral del día
+  const diaSemana = fecha.getDay();
+  const diasMap: any = {
+    0: 'horarioDomingo', 
+    1: 'horarioLunes', 
+    2: 'horarioMartes',
+    3: 'horarioMiercoles', 
+    4: 'horarioJueves', 
+    5: 'horarioViernes', 
+    6: 'horarioSabado',
+  };
 
-    const horarioDia = (empleado as any)[diasMap[diaSemana]];
-    if (!horarioDia) return [];
+  const horarioDia = (empleado as any)[diasMap[diaSemana]];
+  if (!horarioDia) return [];
 
-    const [horaInicio, minInicio] = horarioDia.inicio.split(':').map(Number);
-    const [horaFin, minFin] = horarioDia.fin.split(':').map(Number);
+  const [horaInicio, minInicio] = horarioDia.inicio.split(':').map(Number);
+  const [horaFin, minFin] = horarioDia.fin.split(':').map(Number);
 
-    // Generar todos los slots posibles
-    const slots: string[] = [];
-    let horaActual = horaInicio * 60 + minInicio;
-    const horaFinTotal = horaFin * 60 + minFin;
+  // 3. Generar todos los slots posibles
+  const slots: string[] = [];
+  let horaActual = horaInicio * 60 + minInicio;
+  const horaFinTotal = horaFin * 60 + minFin;
 
-    while (horaActual + duracionMinutos <= horaFinTotal) {
-      const h = Math.floor(horaActual / 60);
-      const m = horaActual % 60;
-      const horaStr = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
-      slots.push(horaStr);
-      horaActual += duracionMinutos;
-    }
-
-    // Crear rangos ocupados considerando la duración de cada cita
-    const rangosOcupados: Array<{ inicio: number; fin: number }> = citasExistentes.map(c => {
-      const inicio = c.fechaHora.getHours() * 60 + c.fechaHora.getMinutes();
-      const fin = inicio + c.duracionMinutos;
-      return { inicio, fin };
-    });
-
-    // Filtrar slots que NO se solapen con ningún rango ocupado
-    return slots.filter(slot => {
-      const [h, m] = slot.split(':').map(Number);
-      const inicioSlot = h * 60 + m;
-      const finSlot = inicioSlot + duracionMinutos;
-
-      return !rangosOcupados.some(rango => {
-        return inicioSlot < rango.fin && finSlot > rango.inicio;
-      });
-    });
+  while (horaActual + duracionMinutos <= horaFinTotal) {
+    const h = Math.floor(horaActual / 60);
+    const m = horaActual % 60;
+    const horaStr = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+    slots.push(horaStr);
+    horaActual += duracionMinutos;
   }
+
+  // 4. Crear rangos ocupados de citas existentes
+  const rangosOcupados: Array<{ inicio: number; fin: number }> = citasExistentes.map(c => {
+    const inicio = c.fechaHora.getHours() * 60 + c.fechaHora.getMinutes();
+    const fin = inicio + c.duracionMinutos;
+    return { inicio, fin };
+  });
+
+  // 🌟 5. NUEVO: Obtener bloqueos de Google Calendar
+  try {
+    const bloqueos = await googleCalendarService.obtenerHorariosBloqueados(empleadoId, fecha);
+    
+    // Convertir bloqueos a rangos de minutos
+    bloqueos.forEach(bloqueo => {
+      const inicio = bloqueo.inicio.getHours() * 60 + bloqueo.inicio.getMinutes();
+      const fin = bloqueo.fin.getHours() * 60 + bloqueo.fin.getMinutes();
+      
+      rangosOcupados.push({ inicio, fin });
+      
+      console.log(`🚫 Bloqueo agregado: ${bloqueo.inicio.toTimeString().substring(0, 5)} - ${bloqueo.fin.toTimeString().substring(0, 5)}`);
+    });
+  } catch (error) {
+    console.error('Error obteniendo bloqueos de Google Calendar:', error);
+    // No fallar si hay error en Google Calendar, continuar con los horarios
+  }
+
+  // 6. Filtrar slots que NO se solapen con ningún rango ocupado
+  const slotsDisponibles = slots.filter(slot => {
+    const [h, m] = slot.split(':').map(Number);
+    const inicioSlot = h * 60 + m;
+    const finSlot = inicioSlot + duracionMinutos;
+
+    // Verificar que no se solape con ningún rango ocupado
+    const hayConflicto = rangosOcupados.some(rango => {
+      return inicioSlot < rango.fin && finSlot > rango.inicio;
+    });
+
+    return !hayConflicto;
+  });
+
+  console.log(`✅ ${slotsDisponibles.length} horarios disponibles (de ${slots.length} slots) para ${fecha.toLocaleDateString()}`);
+  
+  return slotsDisponibles;
+}
 
   /**
    * Verifica si ya existe una cita que se solape con el horario propuesto.

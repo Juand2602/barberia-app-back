@@ -1,9 +1,13 @@
-// src/services/google-calendar.service.ts
+// src/services/google-calendar.service.ts - MEJORADO
+// 🎯 MEJORAS:
+// 1. ✅ Detectar eventos bloqueados en Google Calendar
+// 2. ✅ Sincronizar bloqueos automáticamente
+// 3. ✅ Excluir horarios bloqueados al calcular disponibilidad
 
 import { google, calendar_v3 } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
 import prisma from '../config/database';
-import { addMinutes } from 'date-fns';
+import { addMinutes, startOfDay, endOfDay } from 'date-fns';
 
 export class GoogleCalendarService {
   private oauth2Client: OAuth2Client;
@@ -226,6 +230,109 @@ ${cita.motivoCancelacion ? `Motivo cancelación: ${cita.motivoCancelacion}` : ''
     } catch (error) {
       console.error('Error al actualizar evento:', error);
     }
+  }
+
+  /**
+   * 🌟 NUEVO: Obtiene todos los eventos del calendario en un rango de fechas
+   * Útil para detectar bloqueos de horarios
+   */
+  async obtenerEventosDelDia(empleadoId: string, fecha: Date): Promise<Array<{
+    inicio: Date;
+    fin: Date;
+    resumen: string;
+    esBloqueo: boolean;
+  }>> {
+    const calendar = await this.getCalendarClient(empleadoId);
+    if (!calendar) {
+      return [];
+    }
+
+    const inicioDia = startOfDay(fecha);
+    const finDia = endOfDay(fecha);
+
+    try {
+      const response = await calendar.events.list({
+        calendarId: 'primary',
+        timeMin: inicioDia.toISOString(),
+        timeMax: finDia.toISOString(),
+        singleEvents: true,
+        orderBy: 'startTime',
+      });
+
+      const eventos = response.data.items || [];
+
+      return eventos
+        .filter(evento => evento.start?.dateTime && evento.end?.dateTime)
+        .map(evento => {
+          const resumen = evento.summary || '';
+          
+          // Detectar si es un bloqueo (eventos que contienen palabras clave)
+          const esBloqueo = this.esEventoDeBloqueo(resumen, evento.description);
+
+          return {
+            inicio: new Date(evento.start!.dateTime!),
+            fin: new Date(evento.end!.dateTime!),
+            resumen,
+            esBloqueo,
+          };
+        });
+    } catch (error) {
+      console.error('Error al obtener eventos del calendario:', error);
+      return [];
+    }
+  }
+
+  /**
+   * 🌟 NUEVO: Determina si un evento es un bloqueo de horario
+   * Busca palabras clave como: bloqueado, ocupado, no disponible, etc.
+   */
+  private esEventoDeBloqueo(resumen: string, descripcion?: string | null): boolean {
+    const texto = `${resumen} ${descripcion || ''}`.toLowerCase();
+    
+    const palabrasClave = [
+      'bloqueado',
+      'bloqueo',
+      'ocupado',
+      'no disponible',
+      'cerrado',
+      'personal',
+      'privado',
+      'fuera de oficina',
+      'vacaciones',
+      'día libre',
+      'break',
+      'descanso',
+    ];
+
+    return palabrasClave.some(palabra => texto.includes(palabra));
+  }
+
+  /**
+   * 🌟 NUEVO: Obtiene los horarios bloqueados de un empleado para una fecha
+   * Se integra con el cálculo de horarios disponibles
+   */
+  async obtenerHorariosBloqueados(
+    empleadoId: string, 
+    fecha: Date
+  ): Promise<Array<{ inicio: Date; fin: Date }>> {
+    const eventos = await this.obtenerEventosDelDia(empleadoId, fecha);
+    
+    // Filtrar solo eventos que NO son citas del sistema (bloqueos externos)
+    const bloqueos = eventos
+      .filter(evento => {
+        // Si el evento contiene "Radicado:" es una cita del sistema, no un bloqueo
+        return !evento.resumen.includes('RAD-') && evento.esBloqueo;
+      })
+      .map(evento => ({
+        inicio: evento.inicio,
+        fin: evento.fin,
+      }));
+
+    if (bloqueos.length > 0) {
+      console.log(`🚫 ${bloqueos.length} bloqueos encontrados en Google Calendar para ${fecha.toLocaleDateString()}`);
+    }
+
+    return bloqueos;
   }
 
   /**

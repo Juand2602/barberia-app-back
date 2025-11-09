@@ -1,4 +1,8 @@
-// src/services/whatsapp/bot.service.ts
+// src/services/whatsapp/bot.service.ts - MODIFICADO
+// 🎯 CAMBIOS:
+// 1. ✅ Eliminadas todas las opciones numéricas del menú
+// 2. ✅ Agregado envío de fotos de barberos al seleccionar "Agendar cita"
+// 3. ✅ Integración con sistema de notificaciones
 
 import prisma from '../../config/database';
 import { whatsappMessagesService } from './messages.service';
@@ -8,6 +12,7 @@ import { clientesService } from '../clientes.service';
 import { serviciosService } from '../servicios.service';
 import { empleadosService } from '../empleados.service';
 import { citasService } from '../citas.service';
+import { notificacionesService } from '../notificaciones.service'; // 🌟 NUEVO
 import { ConversationState, ConversationContext } from '../../types';
 import { botConfig } from '../../config/whatsapp';
 
@@ -127,7 +132,9 @@ export class WhatsAppBotService {
     }
   }
 
+  // 🌟 MODIFICADO: Solo botones, sin opciones numéricas
   private async manejarInicial(telefono: string, mensaje: string, contexto: ConversationContext, conversacionId: string) {
+    // ✅ Opción 1: Ubicación
     if (mensaje === 'menu_ubicacion') {
       await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.UBICACION());
       await whatsappMessagesService.enviarMensajeConBotones(
@@ -142,6 +149,7 @@ export class WhatsAppBotService {
       return;
     }
 
+    // ✅ Opción 2: Lista de precios
     if (mensaje === 'menu_precios') {
       try {
         const servicios = await serviciosService.listarActivos();
@@ -167,20 +175,41 @@ export class WhatsAppBotService {
       return;
     }
 
+    // ✅ Opción 3: Agendar cita - 🌟 NUEVO: Enviar fotos de barberos
     if (mensaje === 'menu_agendar') {
       try {
         const barberos = await empleadosService.getAll(true);
         
+        // 🌟 NUEVO: Enviar foto de cada barbero antes de mostrar la lista
+        await whatsappMessagesService.enviarMensaje(
+          telefono,
+          '💈 *Nuestros Profesionales*\n\nA continuación te mostramos nuestro equipo:'
+        );
+
+        // Enviar foto de cada barbero con su información
+        for (const barbero of barberos) {
+          if (barbero.fotoUrl) {
+            await whatsappMessagesService.enviarImagen(
+              telefono,
+              barbero.fotoUrl,
+              `👨‍🦲 *${barbero.nombre}*\n${barbero.especialidades?.length ? `✂️ ${barbero.especialidades.join(', ')}` : ''}`
+            );
+          }
+        }
+
+        // Mostrar lista interactiva de barberos
         await whatsappMessagesService.enviarMensajeConLista(
           telefono,
           MENSAJES.ELEGIR_BARBERO_TEXTO(),
           'Ver barberos',
           [{
             title: 'Nuestros Profesionales',
-            rows: barberos.map((barbero, index) => ({
+            rows: barberos.map((barbero) => ({
               id: `barbero_${barbero.id}`,
-              title: barbero.nombre,
-              description: `Opción ${index + 1}`
+              title: barbero.nombre.substring(0, 24), // Máximo 24 caracteres
+              description: barbero.especialidades?.length 
+                ? barbero.especialidades.join(', ').substring(0, 72) 
+                : 'Barbero profesional'
             }))
           }]
         );
@@ -193,6 +222,7 @@ export class WhatsAppBotService {
       return;
     }
 
+    // ✅ Opción 4: Cancelar cita
     if (mensaje === 'menu_cancelar') {
       await whatsappMessagesService.enviarMensajeConBotones(
         telefono,
@@ -206,77 +236,9 @@ export class WhatsAppBotService {
       return;
     }
 
-    const opcion = messageParser.parsearOpcionNumerica(mensaje, 4);
-    
-    if (opcion === 1) {
-      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.UBICACION());
-      await whatsappMessagesService.enviarMensajeConBotones(
-        telefono,
-        '¿Le puedo servir en algo más?',
-        [
-          { id: 'si_mas', title: '✅ Sí' },
-          { id: 'no_mas', title: '❌ No' }
-        ]
-      );
-      await this.actualizarConversacion(conversacionId, 'ESPERANDO_RESPUESTA_UBICACION', contexto);
-    } else if (opcion === 2) {
-      try {
-        const servicios = await serviciosService.listarActivos();
-        const serviciosParaPlantilla: ServicioParaPlantilla[] = servicios.map(s => ({
-          nombre: s.nombre,
-          precio: s.precio,
-          descripcion: s.descripcion ?? undefined,
-        }));
-        await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.LISTA_PRECIOS(serviciosParaPlantilla));
-        await whatsappMessagesService.enviarMensajeConBotones(
-          telefono,
-          '¿Le puedo servir en algo más?',
-          [
-            { id: 'si_mas', title: '✅ Sí' },
-            { id: 'no_mas', title: '❌ No' }
-          ]
-        );
-        await this.actualizarConversacion(conversacionId, 'ESPERANDO_RESPUESTA_LISTA_PRECIOS', contexto);
-      } catch (error) {
-        console.error('Error obteniendo servicios:', error);
-        await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.ERROR_SERVIDOR());
-      }
-    } else if (opcion === 3) {
-      try {
-        const barberos = await empleadosService.getAll(true);
-        
-        await whatsappMessagesService.enviarMensajeConLista(
-          telefono,
-          MENSAJES.ELEGIR_BARBERO_TEXTO(),
-          'Ver barberos',
-          [{
-            title: 'Nuestros Profesionales',
-            rows: barberos.map((barbero, index) => ({
-              id: `barbero_${barbero.id}`,
-              title: barbero.nombre,
-              description: `Opción ${index + 1}`
-            }))
-          }]
-        );
-        
-        await this.actualizarConversacion(conversacionId, 'ESPERANDO_BARBERO', contexto);
-      } catch (error) {
-        console.error('Error obteniendo barberos:', error);
-        await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.ERROR_SERVIDOR());
-      }
-    } else if (opcion === 4) {
-      await whatsappMessagesService.enviarMensajeConBotones(
-        telefono,
-        MENSAJES.SOLICITAR_RADICADO(),
-        [
-          { id: 'tengo_radicado', title: '✅ Sí, lo tengo' },
-          { id: 'no_radicado', title: '❌ No lo tengo' }
-        ]
-      );
-      await this.actualizarConversacion(conversacionId, 'ESPERANDO_RADICADO', { ...contexto, flujo: 'cancelacion' });
-    } else {
-      await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.OPCION_INVALIDA());
-    }
+    // Si no reconoce el mensaje, mostrar opción inválida
+    await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.OPCION_INVALIDA());
+    await this.enviarMenuPrincipal(telefono);
   }
 
   private async manejarRespuestaUbicacion(telefono: string, mensaje: string, contexto: ConversationContext, conversacionId: string) {
@@ -335,10 +297,12 @@ export class WhatsAppBotService {
     }
   }
 
+  // 🌟 MODIFICADO: Solo selección por ID de lista interactiva, sin opciones numéricas
   private async manejarSeleccionBarbero(telefono: string, mensaje: string, contexto: ConversationContext, conversacionId: string) {
     try {
       const barberos = await empleadosService.getAll(true);
       
+      // Solo aceptar selección por ID de lista interactiva
       if (mensaje.startsWith('barbero_')) {
         const barberoId = mensaje.replace('barbero_', '');
         const barbero = barberos.find(b => b.id === barberoId);
@@ -352,15 +316,8 @@ export class WhatsAppBotService {
         }
       }
       
-      const opcion = messageParser.parsearOpcionNumerica(mensaje, barberos.length);
-      
-      if (opcion) {
-        const barbero = barberos[opcion - 1];
-        contexto.empleadoId = barbero.id;
-        contexto.empleadoNombre = barbero.nombre;
-        await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.SOLICITAR_NOMBRE_COMPLETO());
-        await this.actualizarConversacion(conversacionId, 'ESPERANDO_NOMBRE', contexto);
-      } else if (messageParser.normalizarRespuesta(mensaje) === 'ninguno') {
+      // Si escribe "ninguno"
+      if (messageParser.normalizarRespuesta(mensaje) === 'ninguno') {
         await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.DESPEDIDA());
         await this.finalizarConversacion(conversacionId);
       } else {
@@ -494,6 +451,7 @@ export class WhatsAppBotService {
     }
   }
 
+  // 🌟 MODIFICADO: Agregar notificaciones al crear cita
   private async manejarHora(telefono: string, mensaje: string, contexto: ConversationContext, conversacionId: string) {
     if (messageParser.esComandoCancelacion(mensaje)) {
       await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.DESPEDIDA());
@@ -548,7 +506,7 @@ export class WhatsAppBotService {
         console.log(`📌 Servicio predeterminado seleccionado: ${servicio.nombre}`);
         
         try {
-          await citasService.create({
+          const citaCreada = await citasService.create({
             radicado, 
             clienteId: cliente.id, 
             empleadoId: contexto.empleadoId!,
@@ -557,6 +515,14 @@ export class WhatsAppBotService {
             duracionMinutos: servicio.duracionMinutos, 
             origen: 'WHATSAPP',
           });
+          
+          // 🌟 NUEVO: Enviar notificaciones
+          try {
+            await notificacionesService.notificarCitaAgendada(citaCreada.id);
+          } catch (notifError) {
+            console.error('Error enviando notificaciones:', notifError);
+            // No fallar la cita si falla la notificación
+          }
           
           await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.CITA_CONFIRMADA({
             radicado, 
@@ -695,7 +661,7 @@ export class WhatsAppBotService {
             title: 'Citas Activas',
             rows: citasFormateadas.map(cita => ({
               id: `cita_${cita.radicado}`,
-              title: cita.servicio,
+              title: cita.servicio.substring(0, 24),
               description: `${cita.fecha} - ${cita.hora}`.substring(0, 72)
             }))
           }]
@@ -719,14 +685,6 @@ export class WhatsAppBotService {
     if (mensaje.startsWith('cita_')) {
       const radicado = mensaje.replace('cita_', '');
       await this.buscarCitaPorRadicado(telefono, radicado, contexto, conversacionId);
-      return;
-    }
-    
-    const opcion = messageParser.parsearOpcionNumerica(mensaje, contexto.citasDisponibles?.length || 0);
-    
-    if (opcion && contexto.citasDisponibles) {
-      const citaSeleccionada = contexto.citasDisponibles[opcion - 1];
-      await this.buscarCitaPorRadicado(telefono, citaSeleccionada.radicado, contexto, conversacionId);
       return;
     }
     
