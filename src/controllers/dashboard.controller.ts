@@ -1,4 +1,4 @@
-// src/controllers/dashboard.controller.ts - CORREGIDO
+// src/controllers/dashboard.controller.ts - CORREGIDO COMPLETO
 
 import { Request, Response } from 'express';
 import { citasService } from '../services/citas.service';
@@ -70,14 +70,14 @@ export class DashboardController {
         success: true,
         fecha: hoy,
         stats,
-       nuevas: nuevas.map(this.formatearCita.bind(this)),
-       confirmadas: confirmadas.map(this.formatearCita.bind(this)),
-       completadas: completadas.map(this.formatearCita.bind(this)),
-       canceladas: canceladas.map(this.formatearCita.bind(this)),
-       porBarbero,
+        nuevas: nuevas.map(this.formatearCita.bind(this)),
+        confirmadas: confirmadas.map(this.formatearCita.bind(this)),
+        completadas: completadas.map(this.formatearCita.bind(this)),
+        canceladas: canceladas.map(this.formatearCita.bind(this)),
+        porBarbero,
       });
     } catch (error: any) {
-      console.error('❌ Error en getCitasHoy:', error); // 🔧 AGREGADO: log
+      console.error('❌ Error en getCitasHoy:', error);
       res.status(500).json({
         success: false,
         message: 'Error al obtener citas del día',
@@ -105,7 +105,7 @@ export class DashboardController {
       res.json({
         success: true,
         count: pendientes.length,
-        citas: pendientes.map(c => this.formatearCita(c)), // 🔧 CORREGIDO
+        citas: pendientes.map(this.formatearCita.bind(this)), // 🔧 CORREGIDO: agregado .bind(this)
       });
     } catch (error: any) {
       res.status(500).json({
@@ -169,8 +169,8 @@ export class DashboardController {
     }
   }
 
-  // 🔧 CORREGIDO: Cambiar a arrow function para mantener contexto
-  private formatearCita(cita: any) {
+  // 🔧 CORREGIDO: Arrow function para mantener contexto
+  private formatearCita = (cita: any) => {
     return {
       id: cita.id,
       radicado: cita.radicado,
