@@ -236,7 +236,7 @@ ${cita.motivoCancelacion ? `Motivo cancelación: ${cita.motivoCancelacion}` : ''
    * 🌟 NUEVO: Obtiene todos los eventos del calendario en un rango de fechas
    * Útil para detectar bloqueos de horarios
    */
-  async obtenerEventosDelDia(empleadoId: string, fecha: Date): Promise<Array<{
+async obtenerEventosDelDia(empleadoId: string, fecha: Date): Promise<Array<{
     inicio: Date;
     fin: Date;
     resumen: string;
@@ -262,20 +262,42 @@ ${cita.motivoCancelacion ? `Motivo cancelación: ${cita.motivoCancelacion}` : ''
       const eventos = response.data.items || [];
 
       return eventos
-        .filter(evento => evento.start?.dateTime && evento.end?.dateTime)
         .map(evento => {
+          // 🔧 NUEVO: Manejar eventos de "todo el día" (date) y eventos con hora (dateTime)
+          let inicio: Date;
+          let fin: Date;
+
+          if (evento.start?.date) {
+            // Evento de TODO EL DÍA
+            inicio = new Date(evento.start.date);
+            inicio.setHours(0, 0, 0, 0);
+            
+            fin = new Date(evento.end?.date || evento.start.date);
+            fin.setHours(23, 59, 59, 999);
+            
+            console.log(`📅 Evento TODO EL DÍA detectado: ${evento.summary} (${evento.start.date})`);
+          } else if (evento.start?.dateTime && evento.end?.dateTime) {
+            // Evento con HORA ESPECÍFICA
+            inicio = new Date(evento.start.dateTime);
+            fin = new Date(evento.end.dateTime);
+          } else {
+            // Evento sin información de tiempo válida, omitir
+            return null;
+          }
+
           const resumen = evento.summary || '';
           
           // Detectar si es un bloqueo (eventos que contienen palabras clave)
           const esBloqueo = this.esEventoDeBloqueo(resumen, evento.description);
 
           return {
-            inicio: new Date(evento.start!.dateTime!),
-            fin: new Date(evento.end!.dateTime!),
+            inicio,
+            fin,
             resumen,
             esBloqueo,
           };
-        });
+        })
+        .filter((evento): evento is NonNullable<typeof evento> => evento !== null); // Filtrar nulls
     } catch (error) {
       console.error('Error al obtener eventos del calendario:', error);
       return [];
