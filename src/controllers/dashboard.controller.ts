@@ -66,14 +66,15 @@ export class DashboardController {
         })
       );
 
+      // CORREGIDO: Usando arrow function para mantener el contexto
       res.json({
         success: true,
         fecha: hoy,
         stats,
-        nuevas: nuevas.map(this.formatearCita.bind(this)),
-        confirmadas: confirmadas.map(this.formatearCita.bind(this)),
-        completadas: completadas.map(this.formatearCita.bind(this)),
-        canceladas: canceladas.map(this.formatearCita.bind(this)),
+        nuevas: nuevas.map(cita => this.formatearCita(cita)),
+        confirmadas: confirmadas.map(cita => this.formatearCita(cita)),
+        completadas: completadas.map(cita => this.formatearCita(cita)),
+        canceladas: canceladas.map(cita => this.formatearCita(cita)),
         porBarbero,
       });
     } catch (error: any) {
@@ -102,10 +103,11 @@ export class DashboardController {
         c.estado === 'CONFIRMADA' && c.createdAt > hace30Min
       );
 
+      // CORREGIDO: Usando arrow function para mantener el contexto
       res.json({
         success: true,
         count: pendientes.length,
-        citas: pendientes.map(this.formatearCita.bind(this)), // 🔧 CORREGIDO: agregado .bind(this)
+        citas: pendientes.map(cita => this.formatearCita(cita)),
       });
     } catch (error: any) {
       res.status(500).json({
