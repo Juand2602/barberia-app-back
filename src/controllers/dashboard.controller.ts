@@ -1,8 +1,31 @@
-// src/controllers/dashboard.controller.ts - CORREGIDO COMPLETO
+// src/controllers/dashboard.controller.ts - VERSIÓN FINAL CORREGIDA
 
 import { Request, Response } from 'express';
 import { citasService } from '../services/citas.service';
 import { empleadosService } from '../services/empleados.service';
+
+// 🔧 FUNCIÓN AUXILIAR FUERA DE LA CLASE (Solución recomendada)
+// Esto elimina por completo cualquier dependencia del contexto `this`.
+const formatearCita = (cita: any) => {
+  return {
+    id: cita.id,
+    radicado: cita.radicado,
+    cliente: cita.cliente?.nombre || 'N/A', // Usar optional chaining por si acaso
+    telefono: cita.cliente?.telefono || 'N/A',
+    empleado: cita.empleado?.nombre || 'N/A',
+    servicio: cita.servicioNombre,
+    fecha: cita.fechaHora,
+    hora: new Date(cita.fechaHora).toLocaleTimeString('es-CO', { 
+      hour: '2-digit', 
+      minute: '2-digit' 
+    }),
+    duracion: cita.duracionMinutos,
+    estado: cita.estado,
+    origen: cita.origen,
+    notas: cita.notas,
+    esNueva: cita.createdAt > new Date(Date.now() - 30 * 60000),
+  };
+};
 
 export class DashboardController {
   /**
@@ -66,15 +89,15 @@ export class DashboardController {
         })
       );
 
-      // CORREGIDO: Usando arrow function para mantener el contexto
+      // ✅ CORREGIDO: Llamada a la función auxiliar externa
       res.json({
         success: true,
         fecha: hoy,
         stats,
-        nuevas: nuevas.map(cita => this.formatearCita(cita)),
-        confirmadas: confirmadas.map(cita => this.formatearCita(cita)),
-        completadas: completadas.map(cita => this.formatearCita(cita)),
-        canceladas: canceladas.map(cita => this.formatearCita(cita)),
+        nuevas: nuevas.map(formatearCita),
+        confirmadas: confirmadas.map(formatearCita),
+        completadas: completadas.map(formatearCita),
+        canceladas: canceladas.map(formatearCita),
         porBarbero,
       });
     } catch (error: any) {
@@ -103,11 +126,11 @@ export class DashboardController {
         c.estado === 'CONFIRMADA' && c.createdAt > hace30Min
       );
 
-      // CORREGIDO: Usando arrow function para mantener el contexto
+      // ✅ CORREGIDO: Llamada a la función auxiliar externa
       res.json({
         success: true,
         count: pendientes.length,
-        citas: pendientes.map(cita => this.formatearCita(cita)),
+        citas: pendientes.map(formatearCita),
       });
     } catch (error: any) {
       res.status(500).json({
@@ -169,28 +192,6 @@ export class DashboardController {
         error: error.message,
       });
     }
-  }
-
-  // 🔧 CORREGIDO: Arrow function para mantener contexto
-  private formatearCita = (cita: any) => {
-    return {
-      id: cita.id,
-      radicado: cita.radicado,
-      cliente: cita.cliente.nombre,
-      telefono: cita.cliente.telefono,
-      empleado: cita.empleado.nombre,
-      servicio: cita.servicioNombre,
-      fecha: cita.fechaHora,
-      hora: new Date(cita.fechaHora).toLocaleTimeString('es-CO', { 
-        hour: '2-digit', 
-        minute: '2-digit' 
-      }),
-      duracion: cita.duracionMinutos,
-      estado: cita.estado,
-      origen: cita.origen,
-      notas: cita.notas,
-      esNueva: cita.createdAt > new Date(Date.now() - 30 * 60000),
-    };
   }
 }
 
