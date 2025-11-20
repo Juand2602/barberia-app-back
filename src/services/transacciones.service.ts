@@ -4,7 +4,7 @@ import prisma from '../config/database';
 import { sellosService } from './sellos.service';
 
 export class TransaccionesService {
-  // Obtener todas las transacciones con filtros
+  // Obtener todas las transacciones con filtros.
   async getAll(filters?: {
     fechaInicio?: Date;
     fechaFin?: Date;

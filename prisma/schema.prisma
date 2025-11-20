@@ -182,7 +182,7 @@ model Transaccion {
   citaId          String?
   fecha           DateTime @default(now())
   total           Float
-  metodoPago      String   // "EFECTIVO" | "TRANSFERENCIA" | "MIXTO"
+  metodoPago      String   // "EFECTIVO" | "TRANSFERENCIAS" | "MIXTO"
   estadoPago      String   @default("PENDIENTE")
   referencia      String?
   concepto        String?

@@ -4,7 +4,7 @@ import { Request, Response } from 'express';
 import { transaccionesService } from '../services/transacciones.service';
 
 export class TransaccionesController {
-  // GET /api/transacciones
+  // GET /api/transacciones.
   async getAll(req: Request, res: Response) {
     try {
       const {
