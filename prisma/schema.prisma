@@ -294,3 +294,63 @@ model AperturaCaja {
 
   @@index([usuarioId])
 }
+// ==================== INVENTARIO DE NEVERA E INSUMOS ====================
+
+model ProductoInventario {
+  id              String   @id @default(uuid())
+  nombre          String
+  categoria       String   // "BEBIDAS", "SNACKS", "INSUMOS", "OTROS"
+  precioCompra    Float
+  precioVenta     Float
+  stock           Int      @default(0)
+  stockMinimo     Int      @default(5)
+  unidadMedida    String   @default("UNIDAD") // "UNIDAD", "CAJA", "PAQUETE"
+  activo          Boolean  @default(true)
+  
+  compras         CompraInventario[]
+  ventas          VentaInventario[]
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([activo])
+  @@index([categoria])
+  @@index([stock])
+}
+
+model CompraInventario {
+  id              String   @id @default(uuid())
+  productoId      String
+  cantidad        Int
+  precioUnitario  Float
+  total           Float
+  fecha           DateTime @default(now())
+  proveedor       String?
+  factura         String?
+  notas           String?
+  
+  producto        ProductoInventario @relation(fields: [productoId], references: [id], onDelete: Cascade)
+  
+  createdAt       DateTime @default(now())
+  
+  @@index([productoId, fecha])
+  @@index([fecha])
+}
+
+model VentaInventario {
+  id              String   @id @default(uuid())
+  productoId      String
+  cantidad        Int
+  precioUnitario  Float
+  total           Float
+  fecha           DateTime @default(now())
+  metodoPago      String   @default("EFECTIVO") // "EFECTIVO", "TRANSFERENCIA"
+  notas           String?
+  
+  producto        ProductoInventario @relation(fields: [productoId], references: [id], onDelete: Cascade)
+  
+  createdAt       DateTime @default(now())
+  
+  @@index([productoId, fecha])
+  @@index([fecha])
+}
