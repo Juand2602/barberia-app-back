@@ -182,12 +182,16 @@ model Transaccion {
   citaId          String?
   fecha           DateTime @default(now())
   total           Float
-  metodoPago      String
+  metodoPago      String   // "EFECTIVO" | "TRANSFERENCIA" | "MIXTO"
   estadoPago      String   @default("PENDIENTE")
   referencia      String?
   concepto        String?
   categoria       String?
   notas           String?
+  
+  // ✅ NUEVO: Campos para pago mixto
+  montoEfectivo       Float?
+  montoTransferencia  Float?
   
   items           TransaccionItem[]
   cliente         Cliente? @relation(fields: [clienteId], references: [id])

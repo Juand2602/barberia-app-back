@@ -1,7 +1,7 @@
-// src/services/transacciones.service.ts - CON SELLOS AUTOMÁTICOS
+// src/services/transacciones.service.ts - CON SELLOS AUTOMÁTICOS Y PAGO MIXTO
 
 import prisma from '../config/database';
-import { sellosService } from './sellos.service'; // 🌟 NUEVO
+import { sellosService } from './sellos.service';
 
 export class TransaccionesService {
   // Obtener todas las transacciones con filtros
@@ -97,6 +97,20 @@ export class TransaccionesService {
       throw new Error('Los egresos requieren un concepto');
     }
 
+    // ✅ NUEVO: Validación para pago mixto
+    if (data.metodoPago === 'MIXTO') {
+      if (!data.montoEfectivo || !data.montoTransferencia) {
+        throw new Error('Para pago mixto se requieren montoEfectivo y montoTransferencia');
+      }
+
+      const suma = Number(data.montoEfectivo) + Number(data.montoTransferencia);
+      if (Math.abs(suma - data.total) > 0.01) {
+        throw new Error(
+          `La suma de efectivo ($${data.montoEfectivo}) y transferencia ($${data.montoTransferencia}) debe ser igual al total ($${data.total})`
+        );
+      }
+    }
+
     // Preparar items
     const itemsToCreate =
       Array.isArray(data.items) && data.items.length > 0
@@ -137,6 +151,9 @@ export class TransaccionesService {
         concepto: data.concepto || null,
         categoria: data.categoria || null,
         notas: data.notas || null,
+        // ✅ NUEVO: Guardar montos de pago mixto
+        montoEfectivo: data.metodoPago === 'MIXTO' ? Number(data.montoEfectivo) : null,
+        montoTransferencia: data.metodoPago === 'MIXTO' ? Number(data.montoTransferencia) : null,
         items: { create: itemsToCreate },
       },
       include: {
@@ -151,7 +168,7 @@ export class TransaccionesService {
       },
     });
 
-    // 🌟 NUEVO: Si es ingreso pagado y tiene cliente, agregar sello automáticamente
+    // 🌟 ORIGINAL: Si es ingreso pagado y tiene cliente, agregar sello automáticamente
     if (
       transaccion.tipo === 'INGRESO' && 
       transaccion.estadoPago === 'PAGADO' && 
@@ -182,6 +199,19 @@ export class TransaccionesService {
   async update(id: string, data: any) {
     await this.getById(id);
 
+    // ✅ NUEVO: Validación para pago mixto en actualización
+    if (data.metodoPago === 'MIXTO') {
+      if (data.montoEfectivo !== undefined && data.montoTransferencia !== undefined) {
+        const transaccionActual = await prisma.transaccion.findUnique({ where: { id } });
+        const total = data.total !== undefined ? data.total : transaccionActual?.total || 0;
+        
+        const suma = Number(data.montoEfectivo) + Number(data.montoTransferencia);
+        if (Math.abs(suma - total) > 0.01) {
+          throw new Error('La suma de efectivo y transferencia debe ser igual al total');
+        }
+      }
+    }
+
     const transaccion = await prisma.transaccion.update({
       where: { id },
       data: {
@@ -197,6 +227,13 @@ export class TransaccionesService {
         ...(data.concepto !== undefined && { concepto: data.concepto }),
         ...(data.categoria !== undefined && { categoria: data.categoria }),
         ...(data.notas !== undefined && { notas: data.notas }),
+        // ✅ NUEVO: Actualizar montos de pago mixto
+        ...(data.metodoPago === 'MIXTO' && data.montoEfectivo !== undefined && {
+          montoEfectivo: Number(data.montoEfectivo),
+        }),
+        ...(data.metodoPago === 'MIXTO' && data.montoTransferencia !== undefined && {
+          montoTransferencia: Number(data.montoTransferencia),
+        }),
       },
       include: {
         cliente: true,
@@ -233,12 +270,12 @@ export class TransaccionesService {
     const [
       totalIngresos,
       totalEgresos,
-      totalEfectivo,
-      totalTransferencias,
       totalPagado,
       totalPendiente,
       totalTransacciones,
       totalTransaccionesPagadas,
+      // ✅ CAMBIO: Ya no usamos aggregate para efectivo/transferencias porque hay pago mixto
+      transaccionesPagadas,
     ] = await Promise.all([
       prisma.transaccion.aggregate({ 
         where: { ...wherePagado, tipo: 'INGRESO' }, 
@@ -251,14 +288,6 @@ export class TransaccionesService {
         _count: true 
       }),
       prisma.transaccion.aggregate({ 
-        where: { ...wherePagado, metodoPago: 'EFECTIVO' }, 
-        _sum: { total: true } 
-      }),
-      prisma.transaccion.aggregate({ 
-        where: { ...wherePagado, metodoPago: 'TRANSFERENCIA' }, 
-        _sum: { total: true } 
-      }),
-      prisma.transaccion.aggregate({ 
         where: { ...where, estadoPago: 'PAGADO' }, 
         _sum: { total: true } 
       }),
@@ -268,7 +297,33 @@ export class TransaccionesService {
       }),
       prisma.transaccion.count({ where }),
       prisma.transaccion.count({ where: wherePagado }),
+      // ✅ NUEVO: Obtener todas las transacciones pagadas para calcular efectivo/transferencias
+      prisma.transaccion.findMany({
+        where: { ...wherePagado, tipo: 'INGRESO' },
+        select: {
+          metodoPago: true,
+          total: true,
+          montoEfectivo: true,
+          montoTransferencia: true,
+        },
+      }),
     ]);
+
+    // ✅ NUEVO: Calcular efectivo y transferencias considerando pago mixto
+    let totalEfectivo = 0;
+    let totalTransferencias = 0;
+
+    transaccionesPagadas.forEach((t) => {
+      if (t.metodoPago === 'EFECTIVO') {
+        totalEfectivo += t.total;
+      } else if (t.metodoPago === 'TRANSFERENCIA') {
+        totalTransferencias += t.total;
+      } else if (t.metodoPago === 'MIXTO') {
+        // ✅ NUEVO: Sumar desglosado para pago mixto
+        totalEfectivo += t.montoEfectivo || 0;
+        totalTransferencias += t.montoTransferencia || 0;
+      }
+    });
 
     const ingresos = totalIngresos._sum.total || 0;
     const egresos = totalEgresos._sum.total || 0;
@@ -282,8 +337,8 @@ export class TransaccionesService {
       totalIngresos: ingresos,
       totalEgresos: egresos,
       balance,
-      totalEfectivo: totalEfectivo._sum.total || 0,
-      totalTransferencias: totalTransferencias._sum.total || 0,
+      totalEfectivo, // ✅ Ahora incluye desglose de mixtos
+      totalTransferencias, // ✅ Ahora incluye desglose de mixtos
       totalPagado: totalPagado._sum.total || 0,
       totalPendiente: totalPendiente._sum.total || 0,
     };
@@ -333,11 +388,13 @@ export class TransaccionesService {
 
   /**
    * Marca una transacción como pagada y actualiza la cita a COMPLETADA
-   * 🌟 ACTUALIZADO: Ahora también agrega sello automáticamente
+   * 🌟 ACTUALIZADO: Ahora también agrega sello automáticamente y soporta pago mixto
    */
   async marcarComoPagada(transaccionId: string, datos: {
-    metodoPago: 'EFECTIVO' | 'TRANSFERENCIA';
+    metodoPago: 'EFECTIVO' | 'TRANSFERENCIA' | 'MIXTO'; // ✅ NUEVO: Agregar MIXTO
     referencia?: string;
+    montoEfectivo?: number;      // ✅ NUEVO
+    montoTransferencia?: number; // ✅ NUEVO
   }) {
     try {
       const transaccion = await this.getById(transaccionId);
@@ -346,11 +403,30 @@ export class TransaccionesService {
         throw new Error('La transacción ya está marcada como pagada');
       }
 
+      // ✅ NUEVO: Validación para pago mixto
+      if (datos.metodoPago === 'MIXTO') {
+        if (!datos.montoEfectivo || !datos.montoTransferencia) {
+          throw new Error('Para pago mixto se requieren montoEfectivo y montoTransferencia');
+        }
+
+        const suma = Number(datos.montoEfectivo) + Number(datos.montoTransferencia);
+        if (Math.abs(suma - transaccion.total) > 0.01) {
+          throw new Error(
+            `La suma de efectivo ($${datos.montoEfectivo}) y transferencia ($${datos.montoTransferencia}) debe ser igual al total ($${transaccion.total})`
+          );
+        }
+      }
+
       // Actualizar transacción
       const transaccionActualizada = await this.update(transaccionId, {
         estadoPago: 'PAGADO',
         metodoPago: datos.metodoPago,
         referencia: datos.referencia || null,
+        // ✅ NUEVO: Actualizar montos de pago mixto
+        ...(datos.metodoPago === 'MIXTO' && {
+          montoEfectivo: datos.montoEfectivo,
+          montoTransferencia: datos.montoTransferencia,
+        }),
       });
 
       // Actualizar cita si existe
@@ -363,7 +439,7 @@ export class TransaccionesService {
         console.log(`✅ Cita ${transaccion.citaId} marcada como COMPLETADA`);
       }
 
-      // 🌟 NUEVO: Agregar sello automáticamente si tiene cliente
+      // 🌟 ORIGINAL: Agregar sello automáticamente si tiene cliente
       if (transaccion.clienteId) {
         try {
           const serviciosNombres = transaccion.items

@@ -1,4 +1,4 @@
-// src/controllers/transacciones.controller.ts - MEJORADO
+// src/controllers/transacciones.controller.ts - COMPLETO CON PAGO MIXTO
 
 import { Request, Response } from 'express';
 import { transaccionesService } from '../services/transacciones.service';
@@ -159,18 +159,21 @@ export class TransaccionesController {
   async marcarComoPagada(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const { metodoPago, referencia } = req.body;
+      const { metodoPago, referencia, montoEfectivo, montoTransferencia } = req.body; // ✅ NUEVO: Agregar montos mixtos
 
-      if (!metodoPago || !['EFECTIVO', 'TRANSFERENCIA'].includes(metodoPago)) {
+      // ✅ ACTUALIZADO: Validación para incluir MIXTO
+      if (!metodoPago || !['EFECTIVO', 'TRANSFERENCIA', 'MIXTO'].includes(metodoPago)) {
         return res.status(400).json({
           success: false,
-          message: 'Método de pago inválido. Debe ser EFECTIVO o TRANSFERENCIA',
+          message: 'Método de pago inválido. Debe ser EFECTIVO, TRANSFERENCIA o MIXTO',
         });
       }
 
       const transaccion = await transaccionesService.marcarComoPagada(id, {
         metodoPago,
         referencia,
+        montoEfectivo,      // ✅ NUEVO
+        montoTransferencia, // ✅ NUEVO
       });
 
       res.json({
