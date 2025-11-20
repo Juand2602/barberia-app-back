@@ -1,4 +1,4 @@
-// src/types/index.ts
+// src/types/index.ts - ACTUALIZADO CON SELLOS
 
 export interface WhatsAppMessage {
   from: string;
@@ -8,7 +8,6 @@ export interface WhatsAppMessage {
     body: string;
   };
   type: string;
-  // 🌟 NUEVO: Agregar soporte para mensajes interactivos
   interactive?: {
     type: string;
     button_reply?: {
@@ -36,7 +35,6 @@ export interface WhatsAppWebhookPayload {
         };
         messages?: WhatsAppMessage[];
         statuses?: any[];
-        // 🌟 OPCIONAL: Agregar contacts si lo necesitas
         contacts?: Array<{
           profile: {
             name: string;
@@ -56,7 +54,7 @@ export type ConversationState =
   | 'ESPERANDO_NOMBRE'
   | 'ESPERANDO_FECHA'
   | 'ESPERANDO_FECHA_ESPECIFICA'
-  | 'ESPERANDO_VER_FOTOS_BARBEROS'   // 🌟 NUEVO - Para cuando selecciona "Otro día"
+  | 'ESPERANDO_VER_FOTOS_BARBEROS'
   | 'ESPERANDO_HORA'
   | 'ESPERANDO_CONFIRMACION'
   | 'ESPERANDO_RADICADO'
@@ -87,11 +85,43 @@ export interface ConversationContext {
     fecha: string;
     hora: string;
   }>;
-  barberos?: Array<{  // 🌟 NUEVO
+  barberos?: Array<{
     id: string;
     nombre: string;
-    fotoUrl?: string | null; // 🔧 Permitir null también
-    especialidades?: string | null; // 🔧 Permitir null también
+    fotoUrl?: string | null;
+    especialidades?: string | null;
   }>;
   flujo?: string;
+}
+
+// 🌟 NUEVO: Tipos para sistema de sellos
+export interface HistorialSello {
+  id: string;
+  clienteId: string;
+  tipo: 'AGREGADO' | 'CANJEADO';
+  cantidad: number;
+  motivo?: string;
+  sellosTotales: number;
+  usuarioId?: string;
+  createdAt: Date;
+}
+
+export interface ConfiguracionPremio {
+  id: string;
+  nombre: string;
+  sellosRequeridos: number;
+  descripcion?: string;
+  activo: boolean;
+  orden: number;
+}
+
+export interface AgregarSelloDTO {
+  clienteId: string;
+  cantidad: number;
+  motivo?: string;
+}
+
+export interface CanjearSelloDTO {
+  clienteId: string;
+  premioId: string;
 }

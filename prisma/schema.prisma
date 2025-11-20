@@ -17,15 +17,57 @@ model Cliente {
   notas           String?
   activo          Boolean  @default(true)
   
+  // 🌟 NUEVO: Sistema de Sellos
+  sellos          Int      @default(0)
+  sellosCanjeados Int      @default(0)
+  ultimoSello     DateTime?
+  
   citas           Cita[]
   conversaciones  Conversacion[]
   transacciones   Transaccion[]
+  historialSellos HistorialSello[]  // 🌟 NUEVO
   
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   
   @@index([telefono])
   @@index([nombre])
+  @@index([sellos])
+}
+
+// ==================== HISTORIAL DE SELLOS ====================
+// 🌟 NUEVO: Tabla para tracking de sellos
+model HistorialSello {
+  id          String   @id @default(uuid())
+  clienteId   String
+  tipo        String   // "AGREGADO" | "CANJEADO"
+  cantidad    Int      // Cuántos sellos se agregaron/canjearon
+  motivo      String?  // Ej: "Corte completado", "Premio canjeado: Corte gratis"
+  sellosTotales Int    // Saldo después de esta operación
+  usuarioId   String?  // Quién hizo la operación (opcional)
+  
+  cliente     Cliente  @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  
+  createdAt   DateTime @default(now())
+  
+  @@index([clienteId, createdAt])
+  @@index([tipo])
+}
+
+// ==================== CONFIGURACIÓN PREMIOS ====================
+// 🌟 NUEVO: Para configurar los premios
+model ConfiguracionPremio {
+  id              String   @id @default(uuid())
+  nombre          String   // Ej: "Corte Gratis"
+  sellosRequeridos Int     // Cantidad de sellos necesarios
+  descripcion     String?
+  activo          Boolean  @default(true)
+  orden           Int      @default(0)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([activo, orden])
 }
 
 // ==================== EMPLEADOS ====================
@@ -33,7 +75,7 @@ model Empleado {
   id              String   @id @default(uuid())
   nombre          String
   telefono        String
-  fotoUrl         String?  // 🌟 NUEVO: URL de la foto del barbero
+  fotoUrl         String?
   especialidades  String
   activo          Boolean  @default(true)
   fechaIngreso    DateTime @default(now())

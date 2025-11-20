@@ -1,4 +1,4 @@
-// src/app.ts - ACTUALIZADO
+// src/app.ts - ACTUALIZADO CON SISTEMA DE SELLOS
 
 import express from 'express';
 import cors from 'cors';
@@ -20,7 +20,8 @@ import reportesRoutes from './routes/reportes.routes';
 import comisionesRoutes from './routes/comisiones.routes';
 import adminRoutes from './routes/admin.routes';
 import calendarRoutes from './routes/calendar.routes';
-import dashboardRoutes from './routes/dashboard.routes'; // 🌟 NUEVO
+import dashboardRoutes from './routes/dashboard.routes';
+import sellosRoutes from './routes/sellos.routes'; // 🌟 NUEVO: Sistema de Sellos
 
 // Services
 import { limpiarConversacionesInactivas } from './services/whatsapp/bot.service';
@@ -53,7 +54,8 @@ app.use('/api/reportes', reportesRoutes);
 app.use('/api/comisiones', comisionesRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/calendar', calendarRoutes);
-app.use('/api/dashboard', dashboardRoutes); // 🌟 NUEVO
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/sellos', sellosRoutes); // 🌟 NUEVO: Sistema de Sellos
 
 // Health check
 app.get('/health', (req, res) => {
@@ -98,6 +100,7 @@ app.listen(PORT, () => {
   console.log(`🚀 Servidor corriendo en puerto ${PORT}`);
   console.log(`📱 Webhook WhatsApp: http://localhost:${PORT}/webhook`);
   console.log(`🔌 API REST: http://localhost:${PORT}/api`);
+  console.log(`🎁 Sistema de Sellos: http://localhost:${PORT}/api/sellos`); // 🌟 NUEVO
 });
 
 export default app;
