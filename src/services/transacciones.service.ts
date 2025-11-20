@@ -1,6 +1,7 @@
-// src/services/transacciones.service.ts - MEJORADO CON EMPLEADO DE CITA
+// src/services/transacciones.service.ts - CON SELLOS AUTOMÁTICOS
 
 import prisma from '../config/database';
+import { sellosService } from './sellos.service'; // 🌟 NUEVO
 
 export class TransaccionesService {
   // Obtener todas las transacciones con filtros
@@ -38,7 +39,7 @@ export class TransaccionesService {
         empleado: true,
         cita: {
           include: {
-            empleado: true, // ← IMPORTANTE: Incluir empleado de la cita
+            empleado: true,
           }
         },
         items: {
@@ -62,7 +63,7 @@ export class TransaccionesService {
         empleado: true,
         cita: {
           include: {
-            empleado: true, // ← IMPORTANTE: Incluir empleado de la cita
+            empleado: true,
           }
         },
         items: {
@@ -88,7 +89,6 @@ export class TransaccionesService {
       data.referencia &&
       data.referencia.trim() === ""
     ) {
-      // Si se proporciona una referencia pero está vacía, la eliminamos
       data.referencia = null;
     }
 
@@ -144,12 +144,36 @@ export class TransaccionesService {
         empleado: true,
         cita: {
           include: {
-            empleado: true, // ← Incluir empleado de la cita
+            empleado: true,
           }
         },
         items: { include: { servicio: true } },
       },
     });
+
+    // 🌟 NUEVO: Si es ingreso pagado y tiene cliente, agregar sello automáticamente
+    if (
+      transaccion.tipo === 'INGRESO' && 
+      transaccion.estadoPago === 'PAGADO' && 
+      transaccion.clienteId
+    ) {
+      try {
+        const serviciosNombres = transaccion.items
+          .map(item => item.servicio.nombre)
+          .join(', ');
+
+        await sellosService.agregarSellos({
+          clienteId: transaccion.clienteId,
+          cantidad: 1,
+          motivo: `Servicio completado: ${serviciosNombres}`,
+        });
+
+        console.log(`✅ Sello agregado automáticamente al cliente ${transaccion.clienteId}`);
+      } catch (error) {
+        console.error('⚠️ Error agregando sello automático:', error);
+        // No lanzamos el error para que no falle la transacción
+      }
+    }
 
     return transaccion;
   }
@@ -179,7 +203,7 @@ export class TransaccionesService {
         empleado: true,
         cita: {
           include: {
-            empleado: true, // ← Incluir empleado de la cita
+            empleado: true,
           }
         },
         items: { include: { servicio: true } },
@@ -309,6 +333,7 @@ export class TransaccionesService {
 
   /**
    * Marca una transacción como pagada y actualiza la cita a COMPLETADA
+   * 🌟 ACTUALIZADO: Ahora también agrega sello automáticamente
    */
   async marcarComoPagada(transaccionId: string, datos: {
     metodoPago: 'EFECTIVO' | 'TRANSFERENCIA';
@@ -321,12 +346,14 @@ export class TransaccionesService {
         throw new Error('La transacción ya está marcada como pagada');
       }
 
+      // Actualizar transacción
       const transaccionActualizada = await this.update(transaccionId, {
         estadoPago: 'PAGADO',
         metodoPago: datos.metodoPago,
         referencia: datos.referencia || null,
       });
 
+      // Actualizar cita si existe
       if (transaccion.citaId) {
         await prisma.cita.update({
           where: { id: transaccion.citaId },
@@ -334,6 +361,26 @@ export class TransaccionesService {
         });
 
         console.log(`✅ Cita ${transaccion.citaId} marcada como COMPLETADA`);
+      }
+
+      // 🌟 NUEVO: Agregar sello automáticamente si tiene cliente
+      if (transaccion.clienteId) {
+        try {
+          const serviciosNombres = transaccion.items
+            .map(item => item.servicio.nombre)
+            .join(', ');
+
+          await sellosService.agregarSellos({
+            clienteId: transaccion.clienteId,
+            cantidad: 1,
+            motivo: `Servicio completado: ${serviciosNombres}`,
+          });
+
+          console.log(`🎁 Sello agregado automáticamente al cliente ${transaccion.clienteId}`);
+        } catch (error) {
+          console.error('⚠️ Error agregando sello automático:', error);
+          // No lanzamos el error para que no falle el pago
+        }
       }
 
       console.log(`✅ Transacción ${transaccionId} marcada como PAGADA`);
@@ -355,7 +402,7 @@ export class TransaccionesService {
         empleado: true,
         cita: {
           include: {
-            empleado: true, // ← Incluir empleado de la cita
+            empleado: true,
           }
         },
         items: {
