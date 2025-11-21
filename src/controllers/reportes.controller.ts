@@ -1,4 +1,4 @@
-// src/controllers/reportes.controller.ts
+// src/controllers/reportes.controller.ts - ACTUALIZADO CON INVENTARIO
 
 import { Request, Response } from 'express';
 import { reportesService } from '../services/reportes.service';
@@ -14,7 +14,6 @@ export class ReportesController {
         fechaFin ? new Date(fechaFin as string) : undefined
       );
 
-      // 🔥 CLAVE: Se devuelve el objeto `dashboard` directamente.
       res.json(dashboard);
     } catch (error: any) {
       console.error('Error al obtener dashboard:', error);
@@ -36,7 +35,6 @@ export class ReportesController {
         new Date(fechaFin as string)
       );
 
-      // 🔥 CLAVE: Se devuelve el objeto `reporte` directamente.
       res.json(reporte);
     } catch (error: any) {
       console.error('Error al obtener reporte de ventas:', error);
@@ -58,7 +56,6 @@ export class ReportesController {
         new Date(fechaFin as string)
       );
 
-      // 🔥 CLAVE: Se devuelve el objeto `reporte` directamente.
       res.json(reporte);
     } catch (error: any) {
       console.error('Error al obtener reporte de ventas por empleado:', error);
@@ -80,7 +77,6 @@ export class ReportesController {
         new Date(fechaFin as string)
       );
 
-      // 🔥 CLAVE: Se devuelve el objeto `reporte` directamente.
       res.json(reporte);
     } catch (error: any) {
       console.error('Error al obtener reporte de ventas por servicio:', error);
@@ -102,7 +98,6 @@ export class ReportesController {
         new Date(fechaFin as string)
       );
 
-      // 🔥 CLAVE: Se devuelve el objeto `reporte` directamente.
       res.json(reporte);
     } catch (error: any) {
       console.error('Error al obtener reporte de citas:', error);
@@ -119,15 +114,36 @@ export class ReportesController {
         return res.status(400).json({ error: 'Fechas requeridas' });
       }
 
-      const reporte = await reportesService.getReporteFinanciero(
+      // ✅ MODIFICADO: Usar método con inventario
+      const reporte = await reportesService.getReporteFinancieroConInventario(
         new Date(fechaInicio as string),
         new Date(fechaFin as string)
       );
 
-      // 🔥 CLAVE: Se devuelve el objeto `reporte` directamente.
       res.json(reporte);
     } catch (error: any) {
       console.error('Error al obtener reporte financiero:', error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  // ✅ NUEVO: GET /api/reportes/inventario
+  async getReporteInventario(req: Request, res: Response) {
+    try {
+      const { fechaInicio, fechaFin } = req.query;
+      
+      if (!fechaInicio || !fechaFin) {
+        return res.status(400).json({ error: 'Fechas requeridas' });
+      }
+
+      const reporte = await reportesService.getReporteInventario(
+        new Date(fechaInicio as string),
+        new Date(fechaFin as string)
+      );
+
+      res.json(reporte);
+    } catch (error: any) {
+      console.error('Error al obtener reporte de inventario:', error);
       res.status(500).json({ error: error.message });
     }
   }
@@ -146,7 +162,6 @@ export class ReportesController {
         new Date(fechaFin as string)
       );
 
-      // 🔥 CLAVE: Se devuelve el objeto `reporte` directamente.
       res.json(reporte);
     } catch (error: any) {
       console.error('Error al obtener reporte de clientes:', error);

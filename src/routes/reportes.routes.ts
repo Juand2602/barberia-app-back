@@ -27,4 +27,6 @@ router.get('/metricas-dashboard', (req, res) => reportesController.getMetricasDa
 
 router.get('/servicios-populares', (req, res) => reportesController.getServiciosPopulares(req, res));
 
+router.get('/inventario', reportesController.getReporteInventario);
+
 export default router;

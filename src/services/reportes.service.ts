@@ -600,6 +600,219 @@ async getReporteFinanciero(fechaInicio: Date, fechaFin: Date) {
       .slice(0, limit);
   }
 
+  /**
+   * Reporte de Inventario de Nevera
+   */
+  async getReporteInventario(fechaInicio: Date, fechaFin: Date) {
+    const [productos, compras, ventas] = await Promise.all([
+      prisma.productoInventario.findMany({
+        where: { activo: true },
+        select: {
+          id: true,
+          nombre: true,
+          categoria: true,
+          stock: true,
+          stockMinimo: true,
+          precioCompra: true,
+          precioVenta: true,
+        },
+      }),
+      prisma.compraInventario.findMany({
+        where: {
+          fecha: {
+            gte: startOfDay(fechaInicio),
+            lte: endOfDay(fechaFin),
+          },
+        },
+        include: {
+          producto: {
+            select: {
+              nombre: true,
+              categoria: true,
+            },
+          },
+        },
+      }),
+      prisma.ventaInventario.findMany({
+        where: {
+          fecha: {
+            gte: startOfDay(fechaInicio),
+            lte: endOfDay(fechaFin),
+          },
+        },
+        include: {
+          producto: {
+            select: {
+              nombre: true,
+              categoria: true,
+              precioCompra: true,
+            },
+          },
+        },
+      }),
+    ]);
+
+    // Calcular resumen
+    const productosStockBajo = productos.filter((p) => p.stock <= p.stockMinimo).length;
+    const valorTotalStock = productos.reduce((sum, p) => sum + p.stock * p.precioCompra, 0);
+    const totalCompras = compras.reduce((sum, c) => sum + c.total, 0);
+    const totalVentas = ventas.reduce((sum, v) => sum + v.total, 0);
+    
+    // Calcular ganancia (ventas - costo de productos vendidos)
+    const costoProductosVendidos = ventas.reduce(
+      (sum, v) => sum + (v.producto?.precioCompra || 0) * v.cantidad,
+      0
+    );
+    const gananciaTotal = totalVentas - costoProductosVendidos;
+
+    // Productos más vendidos
+    const ventasPorProducto = new Map<string, any>();
+    ventas.forEach((venta) => {
+      if (!ventasPorProducto.has(venta.productoId)) {
+        ventasPorProducto.set(venta.productoId, {
+          productoId: venta.productoId,
+          nombre: venta.producto?.nombre || 'Producto eliminado',
+          categoria: venta.producto?.categoria || '',
+          cantidadVendida: 0,
+          totalVentas: 0,
+          costoTotal: 0,
+        });
+      }
+      const producto = ventasPorProducto.get(venta.productoId);
+      producto.cantidadVendida += venta.cantidad;
+      producto.totalVentas += venta.total;
+      producto.costoTotal += (venta.producto?.precioCompra || 0) * venta.cantidad;
+    });
+
+    const productosMasVendidos = Array.from(ventasPorProducto.values())
+      .map((p) => ({
+        ...p,
+        ganancia: p.totalVentas - p.costoTotal,
+      }))
+      .sort((a, b) => b.cantidadVendida - a.cantidadVendida)
+      .slice(0, 10);
+
+    // Ventas por categoría
+    const ventasPorCategoria = new Map<string, any>();
+    ventas.forEach((venta) => {
+      const categoria = venta.producto?.categoria || 'SIN CATEGORÍA';
+      if (!ventasPorCategoria.has(categoria)) {
+        ventasPorCategoria.set(categoria, {
+          categoria,
+          cantidad: 0,
+          total: 0,
+        });
+      }
+      const cat = ventasPorCategoria.get(categoria);
+      cat.cantidad += venta.cantidad;
+      cat.total += venta.total;
+    });
+
+    // Movimientos (compras y ventas combinados)
+    const movimientos = [
+      ...compras.map((c) => ({
+        tipo: 'COMPRA' as const,
+        fecha: c.fecha.toISOString(),
+        producto: c.producto?.nombre || 'Producto eliminado',
+        cantidad: c.cantidad,
+        precioUnitario: c.precioUnitario,
+        total: c.total,
+        proveedor: c.proveedor,
+      })),
+      ...ventas.map((v) => ({
+        tipo: 'VENTA' as const,
+        fecha: v.fecha.toISOString(),
+        producto: v.producto?.nombre || 'Producto eliminado',
+        cantidad: v.cantidad,
+        precioUnitario: v.precioUnitario,
+        total: v.total,
+        metodoPago: v.metodoPago,
+      })),
+    ].sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
+
+    return {
+      resumen: {
+        totalProductos: productos.length,
+        productosStockBajo,
+        valorTotalStock,
+        totalCompras,
+        totalVentas,
+        gananciaTotal,
+      },
+      productosMasVendidos,
+      ventasPorCategoria: Array.from(ventasPorCategoria.values()),
+      movimientos,
+    };
+  }
+
+  /**
+   * Reporte Financiero con datos de Inventario
+   */
+  async getReporteFinancieroConInventario(fechaInicio: Date, fechaFin: Date) {
+    // Obtener reporte financiero normal
+    const reporteBase = await this.getReporteFinanciero(fechaInicio, fechaFin);
+
+    // Obtener datos de inventario
+    const [compras, ventas] = await Promise.all([
+      prisma.compraInventario.findMany({
+        where: {
+          fecha: {
+            gte: startOfDay(fechaInicio),
+            lte: endOfDay(fechaFin),
+          },
+        },
+        include: {
+          producto: {
+            select: {
+              precioCompra: true,
+            },
+          },
+        },
+      }),
+      prisma.ventaInventario.findMany({
+        where: {
+          fecha: {
+            gte: startOfDay(fechaInicio),
+            lte: endOfDay(fechaFin),
+          },
+        },
+        include: {
+          producto: {
+            select: {
+              precioCompra: true,
+            },
+          },
+        },
+      }),
+    ]);
+
+    // Calcular totales de inventario
+    const totalCompras = compras.reduce((sum, c) => sum + c.total, 0);
+    const totalVentas = ventas.reduce((sum, v) => sum + v.total, 0);
+    const costoVendido = ventas.reduce(
+      (sum, v) => sum + (v.producto?.precioCompra || 0) * v.cantidad,
+      0
+    );
+    const ganancia = totalVentas - costoVendido;
+
+    // Ventas por método
+    const ventasPorMetodo: Record<string, number> = {};
+    ventas.forEach((venta) => {
+      const metodo = venta.metodoPago;
+      ventasPorMetodo[metodo] = (ventasPorMetodo[metodo] || 0) + venta.total;
+    });
+
+    return {
+      ...reporteBase,
+      inventario: {
+        totalCompras,
+        totalVentas,
+        ganancia,
+        ventasPorMetodo,
+      },
+    };
+  }
+
   
 }
 
