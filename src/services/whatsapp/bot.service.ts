@@ -1,8 +1,10 @@
-// src/services/whatsapp/bot.service.ts - CON MOSAICO A+B
+// src/services/whatsapp/bot.service.ts - CON MOSAICO A+B + CORRECCIONES
 // 🎯 CAMBIOS:
 // 1. ✅ Eliminadas todas las opciones numéricas del menú
 // 2. ✅ Mosaico de barberos (Opción A) + Fotos individuales opcionales (Opción B)
 // 3. ✅ Integración con sistema de notificaciones
+// 4. 🌟 NUEVO: Filtrar horarios a partir de hora actual para citas del mismo día
+// 5. 🌟 NUEVO: Restringir fechas a máximo 7 días de anticipación
 
 import prisma from '../../config/database';
 import { whatsappMessagesService } from './messages.service';
@@ -90,7 +92,7 @@ export class WhatsAppBotService {
       case 'INICIAL':
         await this.manejarInicial(telefono, mensaje, contexto, conversacionId);
         break;
-      case 'ESPERANDO_VER_FOTOS_BARBEROS': // 🌟 NUEVO
+      case 'ESPERANDO_VER_FOTOS_BARBEROS':
         await this.manejarVerFotosBarberos(telefono, mensaje, contexto, conversacionId);
         break;
       case 'ESPERANDO_BARBERO':
@@ -135,9 +137,7 @@ export class WhatsAppBotService {
     }
   }
 
-  // 🌟 MODIFICADO: Solo botones, sin opciones numéricas
   private async manejarInicial(telefono: string, mensaje: string, contexto: ConversationContext, conversacionId: string) {
-    // ✅ Opción 1: Ubicación
     if (mensaje === 'menu_ubicacion') {
       await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.UBICACION());
       await whatsappMessagesService.enviarMensajeConBotones(
@@ -152,7 +152,6 @@ export class WhatsAppBotService {
       return;
     }
 
-    // ✅ Opción 2: Lista de precios
     if (mensaje === 'menu_precios') {
       try {
         const servicios = await serviciosService.listarActivos();
@@ -178,12 +177,10 @@ export class WhatsAppBotService {
       return;
     }
 
-    // ✅ Opción 3: Agendar cita - 🌟 NUEVO: Mosaico (Opción A) + Fotos opcionales (Opción B)
     if (mensaje === 'menu_agendar') {
       try {
         const barberos = await empleadosService.getAll(true);
         
-        // 📸 OPCIÓN A: Enviar UNA imagen mosaico
         const imagenMosaico = process.env.BARBEROS_MOSAICO_URL;
         
         if (imagenMosaico) {
@@ -193,14 +190,12 @@ export class WhatsAppBotService {
             '💈 *Nuestro Equipo de Profesionales*\n\nSelecciona tu barbero de confianza:'
           );
         } else {
-          // Fallback si no hay mosaico configurado
           await whatsappMessagesService.enviarMensaje(
             telefono,
             '💈 *Nuestro Equipo de Profesionales*\n\nSelecciona tu barbero de confianza:'
           );
         }
         
-        // Botón para ver fotos individuales (Opción B)
         await whatsappMessagesService.enviarMensajeConBotones(
           telefono,
           '¿Deseas ver las fotos individuales de cada barbero?',
@@ -210,7 +205,6 @@ export class WhatsAppBotService {
           ]
         );
         
-        // Guardar barberos en contexto
         contexto.barberos = barberos.map(b => ({
           id: b.id,
           nombre: b.nombre,
@@ -226,7 +220,6 @@ export class WhatsAppBotService {
       return;
     }
 
-    // ✅ Opción 4: Cancelar cita
     if (mensaje === 'menu_cancelar') {
       await whatsappMessagesService.enviarMensajeConBotones(
         telefono,
@@ -240,12 +233,10 @@ export class WhatsAppBotService {
       return;
     }
 
-    // Si no reconoce el mensaje, mostrar opción inválida
     await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.OPCION_INVALIDA());
     await this.enviarMenuPrincipal(telefono);
   }
 
-  // 🌟 NUEVO: Manejar respuesta de ver fotos (Opción B)
   private async manejarVerFotosBarberos(
     telefono: string, 
     mensaje: string, 
@@ -253,7 +244,6 @@ export class WhatsAppBotService {
     conversacionId: string
   ) {
     if (mensaje === 'ver_fotos_si') {
-      // 📸 OPCIÓN B: Enviar fotos individuales
       const barberos = contexto.barberos || [];
       
       for (const barbero of barberos) {
@@ -268,19 +258,16 @@ export class WhatsAppBotService {
             `👨‍🦲 *${barbero.nombre}*\n${especialidadesTexto}`
           );
           
-          // Pequeña pausa entre fotos (500ms)
           await new Promise(resolve => setTimeout(resolve, 500));
         }
       }
     } else if (mensaje === 'ver_fotos_no') {
-      // Usuario no quiere ver fotos individuales, continuar directo
       await whatsappMessagesService.enviarMensaje(
         telefono,
         '✅ Perfecto, continuemos con tu cita'
       );
     }
     
-    // Mostrar lista de barberos
     const barberos = contexto.barberos || await empleadosService.getAll(true);
     
     await whatsappMessagesService.enviarMensajeConLista(
@@ -360,12 +347,10 @@ export class WhatsAppBotService {
     }
   }
 
-  // 🌟 MODIFICADO: Solo selección por ID de lista interactiva, sin opciones numéricas
   private async manejarSeleccionBarbero(telefono: string, mensaje: string, contexto: ConversationContext, conversacionId: string) {
     try {
       const barberos = await empleadosService.getAll(true);
       
-      // Solo aceptar selección por ID de lista interactiva
       if (mensaje.startsWith('barbero_')) {
         const barberoId = mensaje.replace('barbero_', '');
         const barbero = barberos.find(b => b.id === barberoId);
@@ -379,7 +364,6 @@ export class WhatsAppBotService {
         }
       }
       
-      // Si escribe "ninguno"
       if (messageParser.normalizarRespuesta(mensaje) === 'ninguno') {
         await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.DESPEDIDA());
         await this.finalizarConversacion(conversacionId);
@@ -448,6 +432,7 @@ export class WhatsAppBotService {
     }
   }
 
+  // 🌟 CORRECCIÓN 1 y 2: Validar límite de 7 días y filtrar horarios desde hora actual
   private async procesarFechaSeleccionada(
     telefono: string, 
     fecha: Date, 
@@ -468,13 +453,14 @@ export class WhatsAppBotService {
       return;
     }
     
-    const maxFecha = new Date();
-    maxFecha.setMonth(maxFecha.getMonth() + 3);
+    // 🌟 CORRECCIÓN 2: Restringir a máximo 7 días de anticipación
+    const maxFecha = new Date(hoy);
+    maxFecha.setDate(maxFecha.getDate() + 7);
     
     if (fechaLocal > maxFecha) {
       await whatsappMessagesService.enviarMensaje(
         telefono,
-        '🧑🏾‍🦲 Solo puede agendar citas con hasta 3 meses de anticipación.\n\nPor favor seleccione una fecha más cercana.'
+        '🧑🏾‍🦲 Solo puede agendar citas con hasta *7 días* de anticipación.\n\n📅 La fecha límite para agendar es: ' + formatearFecha(maxFecha) + '\n\nPor favor seleccione una fecha más cercana o escriba *"cancelar"* para salir.'
       );
       return;
     }
@@ -483,7 +469,22 @@ export class WhatsAppBotService {
     await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.CONSULTANDO_AGENDA());
     
     try {
-      const horarios = await citasService.calcularHorariosDisponibles(contexto.empleadoId!, fechaLocal, 30);
+      let horarios = await citasService.calcularHorariosDisponibles(contexto.empleadoId!, fechaLocal, 30);
+      
+      // 🌟 CORRECCIÓN 1: Si es HOY, filtrar solo horarios después de la hora actual
+      const esHoy = fechaLocal.getTime() === hoy.getTime();
+      if (esHoy) {
+        const ahora = new Date();
+        const horaActualMinutos = ahora.getHours() * 60 + ahora.getMinutes();
+        
+        horarios = horarios.filter(hora => {
+          const [h, m] = hora.split(':').map(Number);
+          const horarioMinutos = h * 60 + m;
+          return horarioMinutos > horaActualMinutos;
+        });
+        
+        console.log(`✅ Filtrados ${horarios.length} horarios disponibles después de las ${ahora.getHours()}:${ahora.getMinutes().toString().padStart(2, '0')}`);
+      }
       
       if (horarios.length > 0) {
         const horariosFormateados = horarios.map((hora, idx) => ({ numero: idx + 1, hora: formatearHora(hora) }));
@@ -514,7 +515,6 @@ export class WhatsAppBotService {
     }
   }
 
-  // 🌟 MODIFICADO: Agregar notificaciones al crear cita
   private async manejarHora(telefono: string, mensaje: string, contexto: ConversationContext, conversacionId: string) {
     if (messageParser.esComandoCancelacion(mensaje)) {
       await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.DESPEDIDA());
@@ -579,12 +579,10 @@ export class WhatsAppBotService {
             origen: 'WHATSAPP',
           });
           
-          // 🌟 NUEVO: Enviar notificaciones
           try {
             await notificacionesService.notificarCitaAgendada(citaCreada.id);
           } catch (notifError) {
             console.error('Error enviando notificaciones:', notifError);
-            // No fallar la cita si falla la notificación
           }
           
           await whatsappMessagesService.enviarMensaje(telefono, MENSAJES.CITA_CONFIRMADA({
