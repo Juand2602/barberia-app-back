@@ -427,7 +427,7 @@ export class WhatsAppBotService {
     } else {
       await whatsappMessagesService.enviarMensaje(
         telefono,
-        `🧑🏾‍🦲 No entendí la fecha "${mensaje}".\n\nPor favor intente con:\n• Un día de la semana: "viernes", "sábado"\n• Una fecha específica: "25/12/2024"\n• Formato corto: "25 dic", "15 de marzo"\n\nO escriba *"cancelar"* para salir.`
+        `💈 No entendí la fecha "${mensaje}".\n\nPor favor intente con:\n• Un día de la semana: "viernes", "sábado"\n• Una fecha específica: "25/12/2024"\n• Formato corto: "25 dic", "15 de marzo"\n\nO escriba *"cancelar"* para salir.`
       );
     }
   }
@@ -448,7 +448,7 @@ export class WhatsAppBotService {
     if (fechaLocal < hoy) {
       await whatsappMessagesService.enviarMensaje(
         telefono,
-        '🧑🏾‍🦲 Lo siento, no puedo agendar citas en fechas pasadas.\n\nPor favor seleccione una fecha válida o escriba *"cancelar"* para salir.'
+        '💈 Lo siento, no puedo agendar citas en fechas pasadas.\n\nPor favor seleccione una fecha válida o escriba *"cancelar"* para salir.'
       );
       return;
     }
@@ -460,7 +460,7 @@ export class WhatsAppBotService {
     if (fechaLocal > maxFecha) {
       await whatsappMessagesService.enviarMensaje(
         telefono,
-        '🧑🏾‍🦲 Solo puede agendar citas con hasta *7 días* de anticipación.\n\n📅 La fecha límite para agendar es: ' + formatearFecha(maxFecha) + '\n\nPor favor seleccione una fecha más cercana o escriba *"cancelar"* para salir.'
+        '💈 Solo puede agendar citas con hasta *7 días* de anticipación.\n\n📅 La fecha límite para agendar es: ' + formatearFecha(maxFecha) + '\n\nPor favor seleccione una fecha más cercana o escriba *"cancelar"* para salir.'
       );
       return;
     }
