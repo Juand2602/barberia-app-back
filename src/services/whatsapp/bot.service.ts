@@ -183,19 +183,27 @@ export class WhatsAppBotService {
         
         const imagenMosaico = process.env.BARBEROS_MOSAICO_URL;
         
+        // 📸 Enviar imagen del mosaico primero
         if (imagenMosaico) {
           await whatsappMessagesService.enviarImagen(
             telefono,
             imagenMosaico,
             '💈 *Nuestro Equipo de Profesionales*\n\nSelecciona tu barbero de confianza:'
           );
+          
+          // ⏱️ Esperar 800ms para asegurar que la imagen llegue primero
+          await new Promise(resolve => setTimeout(resolve, 800));
         } else {
           await whatsappMessagesService.enviarMensaje(
             telefono,
             '💈 *Nuestro Equipo de Profesionales*\n\nSelecciona tu barbero de confianza:'
           );
+          
+          // ⏱️ Pequeña pausa
+          await new Promise(resolve => setTimeout(resolve, 500));
         }
         
+        // 🔘 Ahora enviar los botones
         await whatsappMessagesService.enviarMensajeConBotones(
           telefono,
           '¿Deseas ver las fotos individuales de cada barbero?',
@@ -246,30 +254,47 @@ export class WhatsAppBotService {
     if (mensaje === 'ver_fotos_si') {
       const barberos = contexto.barberos || [];
       
+      // 📸 Enviar fotos individuales con espera entre cada una
       for (const barbero of barberos) {
         if (barbero.fotoUrl) {
           const especialidadesTexto = barbero.especialidades 
             ? `✂️ ${Array.isArray(barbero.especialidades) ? barbero.especialidades.join(', ') : barbero.especialidades}`
             : '';
           
-          await whatsappMessagesService.enviarImagen(
-            telefono,
-            barbero.fotoUrl,
-            `👨‍🦲 *${barbero.nombre}*\n${especialidadesTexto}`
-          );
-          
-          await new Promise(resolve => setTimeout(resolve, 500));
+          try {
+            // ⏳ Esperar a que la imagen se envíe completamente
+            await whatsappMessagesService.enviarImagen(
+              telefono,
+              barbero.fotoUrl,
+              `👨‍🦲 *${barbero.nombre}*\n${especialidadesTexto}`
+            );
+            
+            // ⏱️ Pausa de 1 segundo entre cada imagen para asegurar orden
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          } catch (error) {
+            console.error(`Error enviando foto de ${barbero.nombre}:`, error);
+            // Continuar con el siguiente barbero si hay error
+          }
         }
       }
+      
+      // ⏳ Pausa adicional antes de enviar el siguiente mensaje
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
     } else if (mensaje === 'ver_fotos_no') {
+      // ⏳ Esperar a que el mensaje se envíe
       await whatsappMessagesService.enviarMensaje(
         telefono,
         '✅ Perfecto, continuemos con tu cita'
       );
+      
+      // ⏱️ Pequeña pausa antes del siguiente mensaje
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
     
     const barberos = contexto.barberos || await empleadosService.getAll(true);
     
+    // ⏳ Esperar a que la lista se envíe completamente
     await whatsappMessagesService.enviarMensajeConLista(
       telefono,
       MENSAJES.ELEGIR_BARBERO_TEXTO(),
@@ -427,7 +452,7 @@ export class WhatsAppBotService {
     } else {
       await whatsappMessagesService.enviarMensaje(
         telefono,
-        `💈 No entendí la fecha "${mensaje}".\n\nPor favor intente con:\n• Un día de la semana: "viernes", "sábado"\n• Una fecha específica: "25/12/2024"\n• Formato corto: "25 dic", "15 de marzo"\n\nO escriba *"cancelar"* para salir.`
+        `🧑🏾‍🦲 No entendí la fecha "${mensaje}".\n\nPor favor intente con:\n• Un día de la semana: "viernes", "sábado"\n• Una fecha específica: "25/12/2024"\n• Formato corto: "25 dic", "15 de marzo"\n\nO escriba *"cancelar"* para salir.`
       );
     }
   }
@@ -448,7 +473,7 @@ export class WhatsAppBotService {
     if (fechaLocal < hoy) {
       await whatsappMessagesService.enviarMensaje(
         telefono,
-        '💈 Lo siento, no puedo agendar citas en fechas pasadas.\n\nPor favor seleccione una fecha válida o escriba *"cancelar"* para salir.'
+        '🧑🏾‍🦲 Lo siento, no puedo agendar citas en fechas pasadas.\n\nPor favor seleccione una fecha válida o escriba *"cancelar"* para salir.'
       );
       return;
     }
@@ -460,7 +485,7 @@ export class WhatsAppBotService {
     if (fechaLocal > maxFecha) {
       await whatsappMessagesService.enviarMensaje(
         telefono,
-        '💈 Solo puede agendar citas con hasta *7 días* de anticipación.\n\n📅 La fecha límite para agendar es: ' + formatearFecha(maxFecha) + '\n\nPor favor seleccione una fecha más cercana o escriba *"cancelar"* para salir.'
+        '🧑🏾‍🦲 Solo puede agendar citas con hasta *7 días* de anticipación.\n\n📅 La fecha límite para agendar es: ' + formatearFecha(maxFecha) + '\n\nPor favor seleccione una fecha más cercana o escriba *"cancelar"* para salir.'
       );
       return;
     }
