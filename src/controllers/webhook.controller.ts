@@ -72,7 +72,7 @@ export class WebhookController {
         if (textoMensaje) {
           console.log(`📩 Mensaje de texto de ${telefono}: ${textoMensaje}`);
           
-          await whatsappMessagesService.marcarComoLeido(message.id);
+          //await whatsappMessagesService.marcarComoLeido(message.id);
           await whatsappBotService.procesarMensaje(telefono, textoMensaje, false);
         }
       } 
@@ -83,7 +83,7 @@ export class WebhookController {
           const buttonReply = message.interactive.button_reply;
           console.log(`🔘 Botón presionado por ${telefono}: ${buttonReply.title} (ID: ${buttonReply.id})`);
           
-          await whatsappMessagesService.marcarComoLeido(message.id);
+          //await whatsappMessagesService.marcarComoLeido(message.id);
           // Usar el ID del botón para procesar
           await whatsappBotService.procesarMensaje(telefono, buttonReply.id, true, buttonReply.id);
         }
@@ -92,7 +92,7 @@ export class WebhookController {
           const listReply = message.interactive.list_reply;
           console.log(`📋 Elemento de lista seleccionado por ${telefono}: ${listReply.title} (ID: ${listReply.id})`);
           
-          await whatsappMessagesService.marcarComoLeido(message.id);
+          //await whatsappMessagesService.marcarComoLeido(message.id);
           // Usar el ID del elemento seleccionado para procesar
           await whatsappBotService.procesarMensaje(telefono, listReply.id, true, listReply.id);
         }
