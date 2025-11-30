@@ -50,7 +50,7 @@ Escribe *"cancelar"* en cualquier momento para salir del proceso.`,
     `💈 ¿Con cual de nuestros profesionales desea su cita?\n\nSelecciona un barbero de la lista o escribe "ninguno" si ninguno te conviene.\n\nEscribe *"cancelar"* en cualquier momento para salir del proceso.`,
 
   SOLICITAR_NOMBRE_COMPLETO: () =>
-    `💈 ¿Podría indicarme su *nombre completo* por favor?\n\nEscribe *"cancelar"* en cualquier momento para salir del proceso.`,
+    `💈 ¿Podría indicarme su *nombre y apellido* por favor?\n\nEscribe *"cancelar"* en cualquier momento para salir del proceso.`,
 
   NOMBRE_INVALIDO: () =>
     `💈 Por favor lea con atención y responda correctamente\n\nIntente de nuevo por favor\n\nEscribe *"cancelar"* en cualquier momento para salir del proceso.`,
