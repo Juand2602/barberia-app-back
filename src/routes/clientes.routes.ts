@@ -7,6 +7,7 @@ const router = Router();
 
 // Rutas especiales primero
 router.get('/:id/estadisticas', (req, res) => clientesController.getEstadisticas(req, res));
+router.delete('/:id/permanent', (req, res) => clientesController.permanentDelete(req, res));
 
 // Rutas CRUD
 router.get('/', (req, res) => clientesController.getAll(req, res));

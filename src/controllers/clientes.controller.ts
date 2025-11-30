@@ -133,6 +133,25 @@ export class ClientesController {
       });
     }
   }
+
+    // DELETE /api/clientes/:id/permanent (hard delete)
+  async permanentDelete(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      await clientesService.permanentDelete(id);
+
+      res.json({
+        success: true,
+        message: 'Cliente eliminado permanentemente',
+      });
+    } catch (error: any) {
+      res.status(400).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  }
+
 }
 
 export const clientesController = new ClientesController();
