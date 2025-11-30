@@ -8,7 +8,7 @@ import { googleCalendarService } from './google-calendar.service';
 import { notificacionesService } from './notificaciones.service';
 
 // 🍽️ CONFIGURACIÓN HORA DE ALMUERZO (FIJA PARA TODOS)
-const HORA_ALMUERZO_INICIO = '13:30'; // 1:30 PM
+const HORA_ALMUERZO_INICIO = '13:00'; // 1:30 PM
 const HORA_ALMUERZO_FIN = '14:30';    // 2:30 PM
 
 export class CitasService {
