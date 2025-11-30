@@ -587,8 +587,8 @@ export class WhatsAppBotService {
         const servicios = await serviciosService.listarActivos();
         
         const servicio = servicios.find(s => 
-          s.nombre.toLowerCase().includes('corte básico') || 
-          s.nombre.toLowerCase().includes('corte basico')
+          s.nombre.toLowerCase().includes('Corte Clásico') || 
+          s.nombre.toLowerCase().includes('Corte Clasico')
         ) || servicios[0];
         
         console.log(`📌 Servicio predeterminado seleccionado: ${servicio.nombre}`);

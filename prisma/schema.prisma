@@ -261,6 +261,9 @@ model CierreCaja {
   efectivoInicial   Float
   efectivoFinal     Float
   efectivoEsperado  Float
+  transferenciasInicial   Float    @default(0)  // ✅ NUEVO
+  transferenciasFinal     Float    @default(0)  // ✅ NUEVO
+  transferenciasEsperadas Float    @default(0)  // ✅ NUEVO
   ingresos          Float
   egresos           Float
   diferencia        Float
@@ -287,6 +290,7 @@ model AperturaCaja {
   usuarioId    Int?
   fecha        DateTime @default(now())
   montoInicial Float
+  montoTransferencias Float    @default(0)  // ✅ NUEVO
   estado       String   @default("ABIERTA")
   notas        String? 
   createdAt    DateTime @default(now())

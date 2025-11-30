@@ -1,4 +1,4 @@
-// src/services/cierrecaja.service.ts (Nuevo Backend - CORREGIDO)
+// src/services/cierrecaja.service.ts - CON SOPORTE TRANSFERENCIAS
 
 import prisma from '../config/database';
 
@@ -7,8 +7,12 @@ interface DatosCierre {
   efectivoInicial: number;
   ingresosEfectivo: number;
   egresosEfectivo: number;
-  totalTransferencias: number;
   efectivoEsperado: number;
+  transferenciasInicial: number;
+  ingresosTransferencias: number;
+  egresosTransferencias: number;
+  transferenciasEsperadas: number;
+  totalTransferencias: number;
 }
 
 export class CierreCajaService {
@@ -72,9 +76,7 @@ export class CierreCajaService {
     return cierre;
   }
 
-  // Calcular datos para el cierre del día
- // dentro de class CierreCajaService
-  // Calcular datos para el cierre del día (ajustado para considerar AperturaCaja)
+  // Calcular datos para el cierre del día (CON TRANSFERENCIAS)
   async calcularDatosCierre(fecha: Date): Promise<DatosCierre> {
     const inicioDia = new Date(fecha);
     inicioDia.setHours(0, 0, 0, 0);
@@ -82,7 +84,7 @@ export class CierreCajaService {
     const finDia = new Date(fecha);
     finDia.setHours(23, 59, 59, 999);
 
-    // 1) Buscar apertura del día (si existe y está ABIERTA o incluso si está CERRADA)
+    // 1) Buscar apertura del día
     const aperturaDelDia = await prisma.aperturaCaja.findFirst({
       where: {
         fecha: { gte: inicioDia, lte: finDia },
@@ -90,17 +92,22 @@ export class CierreCajaService {
       orderBy: { fecha: 'desc' },
     });
 
-    // 2) Determinar efectivoInicial:
-    // - Si existe apertura en el día: usar su montoInicial
-    // - Si no existe, usar el efectivoFinal del último cierre (comportamiento previo)
+    // 2) Determinar montos iniciales
     const ultimoCierre = await this.getUltimoCierre();
+    
     const efectivoInicial = aperturaDelDia
       ? aperturaDelDia.montoInicial
       : ultimoCierre
       ? ultimoCierre.efectivoFinal
       : 0;
 
-    // Obtener transacciones del día
+    const transferenciasInicial = aperturaDelDia
+      ? (aperturaDelDia.montoTransferencias || 0)
+      : ultimoCierre
+      ? (ultimoCierre.transferenciasFinal || 0)
+      : 0;
+
+    // 3) Obtener transacciones del día
     const transacciones = await prisma.transaccion.findMany({
       where: {
         fecha: {
@@ -110,40 +117,63 @@ export class CierreCajaService {
       },
     });
 
-    // Calcular totales
+    // 4) Calcular totales separados por método de pago
     let ingresosEfectivo = 0;
     let egresosEfectivo = 0;
-    let totalTransferencias = 0;
+    let ingresosTransferencias = 0;
+    let egresosTransferencias = 0;
 
     transacciones.forEach((trans) => {
+      // EFECTIVO
       if (trans.metodoPago === 'EFECTIVO') {
         if (trans.tipo === 'INGRESO') {
           ingresosEfectivo += trans.total;
         } else {
           egresosEfectivo += trans.total;
         }
-      } else if (trans.metodoPago === 'TRANSFERENCIA') {
+      } 
+      // TRANSFERENCIA
+      else if (trans.metodoPago === 'TRANSFERENCIA') {
         if (trans.tipo === 'INGRESO') {
-          totalTransferencias += trans.total;
+          ingresosTransferencias += trans.total;
+        } else {
+          egresosTransferencias += trans.total;
+        }
+      }
+      // MIXTO - dividir entre efectivo y transferencia
+      else if (trans.metodoPago === 'MIXTO') {
+        const montoEfectivo = trans.montoEfectivo || 0;
+        const montoTransferencia = trans.montoTransferencia || 0;
+
+        if (trans.tipo === 'INGRESO') {
+          ingresosEfectivo += montoEfectivo;
+          ingresosTransferencias += montoTransferencia;
+        } else {
+          egresosEfectivo += montoEfectivo;
+          egresosTransferencias += montoTransferencia;
         }
       }
     });
 
     const efectivoEsperado = efectivoInicial + ingresosEfectivo - egresosEfectivo;
+    const transferenciasEsperadas = transferenciasInicial + ingresosTransferencias - egresosTransferencias;
+    const totalTransferencias = ingresosTransferencias;
 
     return {
       fecha,
       efectivoInicial,
       ingresosEfectivo,
       egresosEfectivo,
-      totalTransferencias,
       efectivoEsperado,
+      transferenciasInicial,
+      ingresosTransferencias,
+      egresosTransferencias,
+      transferenciasEsperadas,
+      totalTransferencias,
     };
   }
 
-
-  // Crear un nuevo cierre de caja
-    // Crear un nuevo cierre de caja (modificado para cerrar AperturaCaja del día)
+  // Crear un nuevo cierre de caja (CON TRANSFERENCIAS)
   async create(data: any) {
     const fecha = data.fecha ? new Date(data.fecha) : new Date();
 
@@ -153,11 +183,13 @@ export class CierreCajaService {
       throw new Error('Ya existe un cierre de caja para esta fecha');
     }
 
-    // Calcular datos del cierre (esto ya considerará la apertura del día si existe)
+    // Calcular datos del cierre
     const datosCierre = await this.calcularDatosCierre(fecha);
 
-    // Calcular diferencia
-    const diferencia = data.efectivoFinal - datosCierre.efectivoEsperado;
+    // Calcular diferencias
+    const diferenciaEfectivo = data.efectivoFinal - datosCierre.efectivoEsperado;
+    const diferenciaTransferencias = (data.transferenciasFinal || 0) - datosCierre.transferenciasEsperadas;
+    const diferencia = diferenciaEfectivo + diferenciaTransferencias;
 
     // Validar diferencia significativa
     if (Math.abs(diferencia) > 20000 && !data.notas) {
@@ -173,6 +205,9 @@ export class CierreCajaService {
         efectivoInicial: datosCierre.efectivoInicial,
         efectivoFinal: data.efectivoFinal,
         efectivoEsperado: datosCierre.efectivoEsperado,
+        transferenciasInicial: datosCierre.transferenciasInicial,
+        transferenciasFinal: data.transferenciasFinal || 0,
+        transferenciasEsperadas: datosCierre.transferenciasEsperadas,
         ingresos: datosCierre.ingresosEfectivo,
         egresos: datosCierre.egresosEfectivo,
         diferencia,
@@ -181,7 +216,7 @@ export class CierreCajaService {
       },
     });
 
-    // --- Cerrar la AperturaCaja del día si existe y está ABIERTA ---
+    // Cerrar la AperturaCaja del día si existe y está ABIERTA
     const inicioDia = new Date(fecha);
     inicioDia.setHours(0, 0, 0, 0);
     const finDia = new Date(fecha);
@@ -202,7 +237,6 @@ export class CierreCajaService {
           data: { estado: 'CERRADA', updatedAt: new Date() },
         });
       } catch (err) {
-        // No bloqueamos la creación del cierre si falla el cierre de apertura, solo logueamos.
         console.error('Error cerrando la apertura del día:', err);
       }
     }
@@ -210,15 +244,20 @@ export class CierreCajaService {
     return cierre;
   }
 
-
   // Actualizar un cierre de caja
   async update(id: string, data: any) {
     const cierreExistente = await this.getById(id);
 
-    // Recalcular diferencia si se cambia el efectivo final
+    // Recalcular diferencia si se cambia algún valor final
     let diferencia = cierreExistente.diferencia;
-    if (data.efectivoFinal !== undefined) {
-      diferencia = data.efectivoFinal - cierreExistente.efectivoEsperado;
+    
+    if (data.efectivoFinal !== undefined || data.transferenciasFinal !== undefined) {
+      const efectivoFinal = data.efectivoFinal ?? cierreExistente.efectivoFinal;
+      const transferenciasFinal = data.transferenciasFinal ?? (cierreExistente.transferenciasFinal || 0);
+      
+      const diferenciaEfectivo = efectivoFinal - cierreExistente.efectivoEsperado;
+      const diferenciaTransferencias = transferenciasFinal - (cierreExistente.transferenciasEsperadas || 0);
+      diferencia = diferenciaEfectivo + diferenciaTransferencias;
 
       if (Math.abs(diferencia) > 20000 && !data.notas && !cierreExistente.notas) {
         throw new Error(
@@ -230,10 +269,11 @@ export class CierreCajaService {
     const cierre = await prisma.cierreCaja.update({
       where: { id },
       data: {
-        ...(data.efectivoFinal !== undefined && { 
-          efectivoFinal: data.efectivoFinal,
-          diferencia,
-        }),
+        ...(data.efectivoFinal !== undefined && { efectivoFinal: data.efectivoFinal }),
+        ...(data.transferenciasFinal !== undefined && { transferenciasFinal: data.transferenciasFinal }),
+        ...(data.efectivoInicial !== undefined && { efectivoInicial: data.efectivoInicial }),
+        ...(data.transferenciasInicial !== undefined && { transferenciasInicial: data.transferenciasInicial }),
+        diferencia,
         ...(data.notas !== undefined && { notas: data.notas || null }),
       },
     });
@@ -297,11 +337,7 @@ export class CierreCajaService {
     };
   }
 
-  // --- MÉTODOS AUXILIARES ---
-
-  /**
-   * Verificar si se puede hacer cierre hoy
-   */
+  // Verificar si se puede hacer cierre hoy
   async puedeCerrarHoy(): Promise<{
     puede: boolean;
     motivo?: string;
@@ -327,11 +363,16 @@ export class CierreCajaService {
     };
   }
 
-    // Crear una apertura de caja (POST /cierre-caja/open)
-  async createApertura(data: { montoInicial: number; usuarioId?: number; notas?: string }) {
-    const fecha = data ? new Date() : new Date();
+  // Crear una apertura de caja (CON TRANSFERENCIAS)
+  async createApertura(data: { 
+    montoInicial: number; 
+    montoTransferencias?: number;
+    usuarioId?: number; 
+    notas?: string 
+  }) {
+    const fecha = new Date();
 
-    // Verificar si ya existe una apertura abierta para hoy (evitar duplicados)
+    // Verificar si ya existe una apertura abierta para hoy
     const inicioDia = new Date();
     inicioDia.setHours(0, 0, 0, 0);
     const finDia = new Date();
@@ -351,6 +392,7 @@ export class CierreCajaService {
     const apertura = await prisma.aperturaCaja.create({
       data: {
         montoInicial: data.montoInicial,
+        montoTransferencias: data.montoTransferencias || 0,
         usuarioId: data.usuarioId,
         notas: data.notas || null,
         fecha,
@@ -361,7 +403,7 @@ export class CierreCajaService {
     return apertura;
   }
 
-  // Obtener apertura abierta para hoy (GET /cierre-caja/open)
+  // Obtener apertura abierta para hoy
   async getAperturaAbierta(usuarioId?: number) {
     const inicioDia = new Date();
     inicioDia.setHours(0, 0, 0, 0);
@@ -374,10 +416,14 @@ export class CierreCajaService {
     };
     if (usuarioId) where.usuarioId = usuarioId;
 
-    const apertura = await prisma.aperturaCaja.findFirst({ where, orderBy: { fecha: 'desc' } });
+    const apertura = await prisma.aperturaCaja.findFirst({ 
+      where, 
+      orderBy: { fecha: 'desc' } 
+    });
     return apertura;
   }
-  // Listar aperturas (opcional: filtro por fecha)
+
+  // Listar aperturas
   async getAperturas(fechaInicio?: Date, fechaFin?: Date) {
     const where: any = {};
     if (fechaInicio || fechaFin) {
@@ -392,7 +438,7 @@ export class CierreCajaService {
     return aperturas;
   }
 
-  // Estadísticas: total de aperturas y suma de montos iniciales (ejemplo)
+  // Estadísticas de aperturas
   async getAperturasEstadisticas(fechaInicio?: Date, fechaFin?: Date) {
     const where: any = {};
     if (fechaInicio || fechaFin) {
@@ -403,16 +449,19 @@ export class CierreCajaService {
 
     const totalAperturas = await prisma.aperturaCaja.count({ where });
     const sumaMontos = await prisma.aperturaCaja.aggregate({
-      _sum: { montoInicial: true },
+      _sum: { 
+        montoInicial: true,
+        montoTransferencias: true,
+      },
       where,
     });
 
     return {
       totalAperturas,
       sumaMontosIniciales: sumaMontos._sum.montoInicial || 0,
+      sumaTransferenciasIniciales: sumaMontos._sum.montoTransferencias || 0,
     };
   }
-
 }
 
 export const cierreCajaService = new CierreCajaService();
