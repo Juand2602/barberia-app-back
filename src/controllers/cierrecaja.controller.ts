@@ -1,4 +1,4 @@
-// src/controllers/cierrecaja.controller.ts (Nuevo Backend - CORREGIDO)
+// src/controllers/cierrecaja.controller.ts - CORREGIDO CON TRANSFERENCIAS
 
 import { Request, Response } from 'express';
 import { cierreCajaService } from '../services/cierrecaja.service';
@@ -222,23 +222,35 @@ export class CierreCajaController {
     }
   }
 
-    // POST /api/cierre-caja/open
+  // ✅ CORREGIDO: POST /api/cierre-caja/open
   async open(req: Request, res: Response) {
     try {
-      const { montoInicial, usuarioId, notas } = req.body;
+      const { montoInicial, montoTransferencias, usuarioId, notas } = req.body;
+      
       if (montoInicial == null) {
-        return res.status(400).json({ success: false, message: 'montoInicial requerido' });
+        return res.status(400).json({ 
+          success: false, 
+          message: 'montoInicial requerido' 
+        });
       }
 
       const apertura = await cierreCajaService.createApertura({
         montoInicial: Number(montoInicial),
+        montoTransferencias: montoTransferencias != null ? Number(montoTransferencias) : 0, // ✅ AGREGADO
         usuarioId: usuarioId ? Number(usuarioId) : undefined,
         notas,
       });
 
-      res.status(201).json({ success: true, data: apertura, message: 'Apertura creada' });
+      res.status(201).json({ 
+        success: true, 
+        data: apertura, 
+        message: 'Apertura creada' 
+      });
     } catch (error: any) {
-      res.status(400).json({ success: false, message: error.message || 'Error al crear apertura' });
+      res.status(400).json({ 
+        success: false, 
+        message: error.message || 'Error al crear apertura' 
+      });
     }
   }
 
@@ -246,12 +258,15 @@ export class CierreCajaController {
   async getOpen(req: Request, res: Response) {
     try {
       const { usuarioId } = req.query;
-      const apertura = await cierreCajaService.getAperturaAbierta(usuarioId ? Number(usuarioId) : undefined);
+      const apertura = await cierreCajaService.getAperturaAbierta(
+        usuarioId ? Number(usuarioId) : undefined
+      );
       res.json({ success: true, data: apertura });
     } catch (error: any) {
       res.status(500).json({ success: false, message: error.message });
     }
   }
+
   // GET /api/cierre-caja/aperturas
   async getAperturas(req: Request, res: Response) {
     try {
@@ -279,7 +294,6 @@ export class CierreCajaController {
       res.status(500).json({ success: false, message: err.message });
     }
   }
-
 }
 
 export const cierreCajaController = new CierreCajaController();
