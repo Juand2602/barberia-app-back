@@ -1,11 +1,15 @@
-// src/services/citas.service.ts - CON GOOGLE CALENDAR
+// src/services/citas.service.ts - CON GOOGLE CALENDAR Y HORA DE ALMUERZO
 
 import prisma from '../config/database';
 import { empleadosService } from './empleados.service';
 import { transaccionesService } from './transacciones.service';
 import { serviciosService } from './servicios.service';
-import { googleCalendarService } from './google-calendar.service'; // ✅ NUEVO
+import { googleCalendarService } from './google-calendar.service';
 import { notificacionesService } from './notificaciones.service';
+
+// 🍽️ CONFIGURACIÓN HORA DE ALMUERZO (FIJA PARA TODOS)
+const HORA_ALMUERZO_INICIO = '13:30'; // 1:30 PM
+const HORA_ALMUERZO_FIN = '14:30';    // 2:30 PM
 
 export class CitasService {
   // Obtener todas las citas con filtros
@@ -126,6 +130,31 @@ export class CitasService {
     return cita;
   }
 
+  // 🍽️ NUEVA FUNCIÓN: Verificar si un horario cae en hora de almuerzo
+  private estaEnHoraAlmuerzo(horaMinutos: number): boolean {
+    const [almuerzoInicioH, almuerzoInicioM] = HORA_ALMUERZO_INICIO.split(':').map(Number);
+    const [almuerzoFinH, almuerzoFinM] = HORA_ALMUERZO_FIN.split(':').map(Number);
+    
+    const almuerzoInicioMinutos = almuerzoInicioH * 60 + almuerzoInicioM;
+    const almuerzoFinMinutos = almuerzoFinH * 60 + almuerzoFinM;
+    
+    return horaMinutos >= almuerzoInicioMinutos && horaMinutos < almuerzoFinMinutos;
+  }
+
+  // 🍽️ NUEVA FUNCIÓN: Verificar si una cita se solapa con hora de almuerzo
+  private seSolapaConAlmuerzo(inicioMinutos: number, duracionMinutos: number): boolean {
+    const finMinutos = inicioMinutos + duracionMinutos;
+    
+    const [almuerzoInicioH, almuerzoInicioM] = HORA_ALMUERZO_INICIO.split(':').map(Number);
+    const [almuerzoFinH, almuerzoFinM] = HORA_ALMUERZO_FIN.split(':').map(Number);
+    
+    const almuerzoInicioMinutos = almuerzoInicioH * 60 + almuerzoInicioM;
+    const almuerzoFinMinutos = almuerzoFinH * 60 + almuerzoFinM;
+    
+    // Verifica si hay solapamiento
+    return inicioMinutos < almuerzoFinMinutos && finMinutos > almuerzoInicioMinutos;
+  }
+
   // Crear una nueva cita
   async create(data: any) {
     const fechaHora = new Date(data.fechaHora);
@@ -133,6 +162,12 @@ export class CitasService {
     // Validar que la fecha no sea en el pasado
     if (fechaHora < new Date()) {
       throw new Error('No se pueden crear citas en el pasado');
+    }
+
+    // 🍽️ NUEVO: Validar que no esté en hora de almuerzo
+    const horaMinutos = fechaHora.getHours() * 60 + fechaHora.getMinutes();
+    if (this.seSolapaConAlmuerzo(horaMinutos, data.duracionMinutos)) {
+      throw new Error('No se pueden agendar citas durante la hora de almuerzo (1:30 PM - 2:30 PM)');
     }
 
     // Verificar que no haya solapamiento con citas existentes
@@ -164,7 +199,6 @@ export class CitasService {
     }
 
     // Verificar que la hora está dentro del horario laboral
-    const horaMinutos = fechaHora.getHours() * 60 + fechaHora.getMinutes();
     const [horaInicio, minInicio] = horarioDia.inicio.split(':').map(Number);
     const [horaFin, minFin] = horarioDia.fin.split(':').map(Number);
     const inicioMinutos = horaInicio * 60 + minInicio;
@@ -205,12 +239,11 @@ export class CitasService {
       },
     });
 
-    // ✅ NUEVO: Sincronizar con Google Calendar
+    // Sincronizar con Google Calendar
     try {
       await googleCalendarService.crearEvento(cita.id);
     } catch (error) {
       console.error('❌ Error al sincronizar con Google Calendar:', error);
-      // No lanzar error para no fallar la creación de la cita
     }
 
     // Crear transacción pendiente automáticamente
@@ -256,6 +289,12 @@ export class CitasService {
         throw new Error('No se pueden reprogramar citas en el pasado');
       }
 
+      // 🍽️ NUEVO: Validar hora de almuerzo
+      const horaMinutos = nuevaFechaHora.getHours() * 60 + nuevaFechaHora.getMinutes();
+      if (this.seSolapaConAlmuerzo(horaMinutos, nuevaDuracion)) {
+        throw new Error('No se pueden agendar citas durante la hora de almuerzo (1:30 PM - 2:30 PM)');
+      }
+
       // Verificar disponibilidad del empleado (excluyendo la cita actual)
       const disponibilidad = await this.verificarDisponibilidadParaActualizar(
         id,
@@ -289,7 +328,7 @@ export class CitasService {
       },
     });
 
-    // ✅ NUEVO: Actualizar en Google Calendar
+    // Actualizar en Google Calendar
     try {
       await googleCalendarService.actualizarEvento(id);
     } catch (error) {
@@ -303,7 +342,6 @@ export class CitasService {
   async cambiarEstado(id: string, data: { estado: string; motivoCancelacion?: string }) {
     const cita = await this.getById(id);
 
-    // Validaciones de transiciones de estado
     if (cita.estado === 'COMPLETADA') {
       throw new Error('No se puede modificar una cita completada');
     }
@@ -312,7 +350,6 @@ export class CitasService {
       throw new Error('Solo se puede reactivar una cita cancelada a estado PENDIENTE');
     }
 
-    // Si se cancela, requiere motivo
     if (data.estado === 'CANCELADA' && !data.motivoCancelacion) {
       throw new Error('Debe proporcionar un motivo de cancelación');
     }
@@ -329,14 +366,12 @@ export class CitasService {
       },
     });
 
-    // ✅ NUEVO: Actualizar en Google Calendar (cambia el color según el estado)
     try {
       await googleCalendarService.actualizarEvento(id);
     } catch (error) {
       console.error('❌ Error al actualizar en Google Calendar:', error);
     }
 
-    // Si se cancela la cita, cancelar/eliminar la transacción pendiente
     if (data.estado === 'CANCELADA') {
       try {
         const transaccion = await transaccionesService.obtenerPorCitaId(id);
@@ -360,7 +395,6 @@ export class CitasService {
       throw new Error('No se puede eliminar una cita completada');
     }
 
-    // Eliminar transacción pendiente asociada
     try {
       const transaccion = await transaccionesService.obtenerPorCitaId(id);
       if (transaccion && transaccion.estadoPago === 'PENDIENTE') {
@@ -369,17 +403,6 @@ export class CitasService {
     } catch (error) {
       console.error('Error eliminando transacción al borrar cita:', error);
     }
-
-    // ✅ NUEVO: No es necesario eliminar el evento de Google Calendar
-    // porque el empleado puede querer mantener el registro
-    // Si quieres eliminarlo, descomenta esto:
-    /*
-    try {
-      await googleCalendarService.eliminarEvento(id);
-    } catch (error) {
-      console.error('Error al eliminar de Google Calendar:', error);
-    }
-    */
 
     await prisma.cita.delete({
       where: { id },
@@ -441,11 +464,7 @@ export class CitasService {
     return citas;
   }
 
-  // --- MÉTODOS AUXILIARES PARA EL BOT DE WHATSAPP ---
-
-  /**
-   * Busca una cita por su radicado.
-   */
+  // Buscar una cita por su radicado
   async buscarPorRadicado(radicado: string) {
     return prisma.cita.findUnique({
       where: { radicado },
@@ -456,9 +475,7 @@ export class CitasService {
     });
   }
 
-  /**
-   * Cancela una cita por su radicado.
-   */
+  // Cancelar una cita por su radicado
   async cancelar(radicado: string) {
     const cita = await prisma.cita.update({
       where: { radicado },
@@ -468,14 +485,12 @@ export class CitasService {
       },
     });
 
-    // ✅ NUEVO: Actualizar en Google Calendar
     try {
       await googleCalendarService.actualizarEvento(cita.id);
     } catch (error) {
       console.error('Error al actualizar en Google Calendar:', error);
     }
 
-    // Eliminar transacción pendiente asociada
     try {
       const transaccion = await transaccionesService.obtenerPorCitaId(cita.id);
       if (transaccion && transaccion.estadoPago === 'PENDIENTE') {
@@ -490,95 +505,104 @@ export class CitasService {
   }
 
   /**
-   * Calcula los horarios disponibles considerando la duración de cada cita.
+   * 🍽️ ACTUALIZADO: Calcula los horarios disponibles excluyendo la hora de almuerzo
    */
- async calcularHorariosDisponibles(
-  empleadoId: string, 
-  fecha: Date, 
-  duracionMinutos: number = 30
-): Promise<string[]> {
-  // 1. Obtener citas existentes en el sistema
-  const citasExistentes = await this.getByFecha(fecha, empleadoId).then(citas => 
-    citas.filter(c => ['PENDIENTE', 'CONFIRMADA'].includes(c.estado))
-  );
-  
-  const empleado = await empleadosService.getById(empleadoId);
-  if (!empleado) return [];
-
-  // 2. Obtener horario laboral del día
-  const diaSemana = fecha.getDay();
-  const diasMap: any = {
-    0: 'horarioDomingo', 
-    1: 'horarioLunes', 
-    2: 'horarioMartes',
-    3: 'horarioMiercoles', 
-    4: 'horarioJueves', 
-    5: 'horarioViernes', 
-    6: 'horarioSabado',
-  };
-
-  const horarioDia = (empleado as any)[diasMap[diaSemana]];
-  if (!horarioDia) return [];
-
-  const [horaInicio, minInicio] = horarioDia.inicio.split(':').map(Number);
-  const [horaFin, minFin] = horarioDia.fin.split(':').map(Number);
-
-  // 3. Generar todos los slots posibles
-  const slots: string[] = [];
-  let horaActual = horaInicio * 60 + minInicio;
-  const horaFinTotal = horaFin * 60 + minFin;
-
-  while (horaActual + duracionMinutos <= horaFinTotal) {
-    const h = Math.floor(horaActual / 60);
-    const m = horaActual % 60;
-    const horaStr = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
-    slots.push(horaStr);
-    horaActual += duracionMinutos;
-  }
-
-  // 4. Crear rangos ocupados de citas existentes
-  const rangosOcupados: Array<{ inicio: number; fin: number }> = citasExistentes.map(c => {
-    const inicio = c.fechaHora.getHours() * 60 + c.fechaHora.getMinutes();
-    const fin = inicio + c.duracionMinutos;
-    return { inicio, fin };
-  });
-
-  // 🌟 5. NUEVO: Obtener bloqueos de Google Calendar
-  try {
-    const bloqueos = await googleCalendarService.obtenerHorariosBloqueados(empleadoId, fecha);
+  async calcularHorariosDisponibles(
+    empleadoId: string, 
+    fecha: Date, 
+    duracionMinutos: number = 30
+  ): Promise<string[]> {
+    // 1. Obtener citas existentes en el sistema
+    const citasExistentes = await this.getByFecha(fecha, empleadoId).then(citas => 
+      citas.filter(c => ['PENDIENTE', 'CONFIRMADA'].includes(c.estado))
+    );
     
-    // Convertir bloqueos a rangos de minutos
-    bloqueos.forEach(bloqueo => {
-      const inicio = bloqueo.inicio.getHours() * 60 + bloqueo.inicio.getMinutes();
-      const fin = bloqueo.fin.getHours() * 60 + bloqueo.fin.getMinutes();
-      
-      rangosOcupados.push({ inicio, fin });
-      
-      console.log(`🚫 Bloqueo agregado: ${bloqueo.inicio.toTimeString().substring(0, 5)} - ${bloqueo.fin.toTimeString().substring(0, 5)}`);
+    const empleado = await empleadosService.getById(empleadoId);
+    if (!empleado) return [];
+
+    // 2. Obtener horario laboral del día
+    const diaSemana = fecha.getDay();
+    const diasMap: any = {
+      0: 'horarioDomingo', 
+      1: 'horarioLunes', 
+      2: 'horarioMartes',
+      3: 'horarioMiercoles', 
+      4: 'horarioJueves', 
+      5: 'horarioViernes', 
+      6: 'horarioSabado',
+    };
+
+    const horarioDia = (empleado as any)[diasMap[diaSemana]];
+    if (!horarioDia) return [];
+
+    const [horaInicio, minInicio] = horarioDia.inicio.split(':').map(Number);
+    const [horaFin, minFin] = horarioDia.fin.split(':').map(Number);
+
+    // 3. Generar todos los slots posibles
+    const slots: string[] = [];
+    let horaActual = horaInicio * 60 + minInicio;
+    const horaFinTotal = horaFin * 60 + minFin;
+
+    while (horaActual + duracionMinutos <= horaFinTotal) {
+      const h = Math.floor(horaActual / 60);
+      const m = horaActual % 60;
+      const horaStr = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+      slots.push(horaStr);
+      horaActual += duracionMinutos;
+    }
+
+    // 4. Crear rangos ocupados de citas existentes
+    const rangosOcupados: Array<{ inicio: number; fin: number }> = citasExistentes.map(c => {
+      const inicio = c.fechaHora.getHours() * 60 + c.fechaHora.getMinutes();
+      const fin = inicio + c.duracionMinutos;
+      return { inicio, fin };
     });
-  } catch (error) {
-    console.error('Error obteniendo bloqueos de Google Calendar:', error);
-    // No fallar si hay error en Google Calendar, continuar con los horarios
+
+    // 🍽️ 5. NUEVO: Agregar rango de hora de almuerzo a los rangos ocupados
+    const [almuerzoInicioH, almuerzoInicioM] = HORA_ALMUERZO_INICIO.split(':').map(Number);
+    const [almuerzoFinH, almuerzoFinM] = HORA_ALMUERZO_FIN.split(':').map(Number);
+    
+    rangosOcupados.push({
+      inicio: almuerzoInicioH * 60 + almuerzoInicioM,
+      fin: almuerzoFinH * 60 + almuerzoFinM,
+    });
+    
+    console.log(`🍽️ Hora de almuerzo bloqueada: ${HORA_ALMUERZO_INICIO} - ${HORA_ALMUERZO_FIN}`);
+
+    // 6. Obtener bloqueos de Google Calendar
+    try {
+      const bloqueos = await googleCalendarService.obtenerHorariosBloqueados(empleadoId, fecha);
+      
+      bloqueos.forEach(bloqueo => {
+        const inicio = bloqueo.inicio.getHours() * 60 + bloqueo.inicio.getMinutes();
+        const fin = bloqueo.fin.getHours() * 60 + bloqueo.fin.getMinutes();
+        
+        rangosOcupados.push({ inicio, fin });
+        
+        console.log(`🚫 Bloqueo agregado: ${bloqueo.inicio.toTimeString().substring(0, 5)} - ${bloqueo.fin.toTimeString().substring(0, 5)}`);
+      });
+    } catch (error) {
+      console.error('Error obteniendo bloqueos de Google Calendar:', error);
+    }
+
+    // 7. Filtrar slots que NO se solapen con ningún rango ocupado
+    const slotsDisponibles = slots.filter(slot => {
+      const [h, m] = slot.split(':').map(Number);
+      const inicioSlot = h * 60 + m;
+      const finSlot = inicioSlot + duracionMinutos;
+
+      // Verificar que no se solape con ningún rango ocupado
+      const hayConflicto = rangosOcupados.some(rango => {
+        return inicioSlot < rango.fin && finSlot > rango.inicio;
+      });
+
+      return !hayConflicto;
+    });
+
+    console.log(`✅ ${slotsDisponibles.length} horarios disponibles (de ${slots.length} slots) para ${fecha.toLocaleDateString()}`);
+    
+    return slotsDisponibles;
   }
-
-  // 6. Filtrar slots que NO se solapen con ningún rango ocupado
-  const slotsDisponibles = slots.filter(slot => {
-    const [h, m] = slot.split(':').map(Number);
-    const inicioSlot = h * 60 + m;
-    const finSlot = inicioSlot + duracionMinutos;
-
-    // Verificar que no se solape con ningún rango ocupado
-    const hayConflicto = rangosOcupados.some(rango => {
-      return inicioSlot < rango.fin && finSlot > rango.inicio;
-    });
-
-    return !hayConflicto;
-  });
-
-  console.log(`✅ ${slotsDisponibles.length} horarios disponibles (de ${slots.length} slots) para ${fecha.toLocaleDateString()}`);
-  
-  return slotsDisponibles;
-}
 
   /**
    * Verifica si ya existe una cita que se solape con el horario propuesto.
