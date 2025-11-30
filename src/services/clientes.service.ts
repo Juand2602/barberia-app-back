@@ -273,6 +273,58 @@ export class ClientesService {
     
     return cliente;
   }
+    // Eliminar permanentemente un cliente (hard delete con cascada manual)
+  async permanentDelete(id: string) {
+    const cliente = await prisma.cliente.findUnique({
+      where: { id },
+    });
+
+    if (!cliente) {
+      throw new Error('Cliente no encontrado');
+    }
+
+    // Eliminar en cascada manualmente en el orden correcto
+    await prisma.$transaction(async (tx) => {
+      // 1. Eliminar historial de sellos
+      await tx.historialSello.deleteMany({
+        where: { clienteId: id },
+      });
+
+      // 2. Eliminar items de transacciones primero
+      const transacciones = await tx.transaccion.findMany({
+        where: { clienteId: id },
+        select: { id: true },
+      });
+
+      for (const transaccion of transacciones) {
+        await tx.transaccionItem.deleteMany({
+          where: { transaccionId: transaccion.id },
+        });
+      }
+
+      // 3. Eliminar transacciones
+      await tx.transaccion.deleteMany({
+        where: { clienteId: id },
+      });
+
+      // 4. Eliminar citas
+      await tx.cita.deleteMany({
+        where: { clienteId: id },
+      });
+
+      // 5. Eliminar conversaciones
+      await tx.conversacion.deleteMany({
+        where: { clienteId: id },
+      });
+
+      // 6. Finalmente eliminar el cliente
+      await tx.cliente.delete({
+        where: { id },
+      });
+    });
+
+    return { message: 'Cliente eliminado permanentemente con todos sus registros' };
+  }
 }
 
 export const clientesService = new ClientesService();
