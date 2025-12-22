@@ -372,6 +372,174 @@ async obtenerEventosDelDia(empleadoId: string, fecha: Date): Promise<Array<{
       },
     });
   }
+  /**
+ * 🌟 NUEVO: Sincroniza una cita existente hacia Google Calendar
+ * Útil para citas que ya estaban en la BD antes de conectar el calendario
+ */
+async sincronizarCitaExistente(citaId: string) {
+  const cita = await prisma.cita.findUnique({
+    where: { id: citaId },
+    include: { cliente: true, empleado: true },
+  });
+
+  if (!cita) {
+    throw new Error('Cita no encontrada');
+  }
+
+  // Si ya tiene googleEventId, actualizar en lugar de crear
+  if (cita.googleEventId) {
+    console.log(`⚠️ Cita ${citaId} ya tiene evento en Google Calendar, actualizando...`);
+    return await this.actualizarEvento(citaId);
+  }
+
+  // Verificar que el empleado tenga Google Calendar conectado
+  const calendar = await this.getCalendarClient(cita.empleadoId);
+  if (!calendar) {
+    console.log(`⚠️ Empleado ${cita.empleado.nombre} no tiene Google Calendar conectado`);
+    return { success: false, motivo: 'Calendario no conectado' };
+  }
+
+  const fechaInicio = new Date(cita.fechaHora);
+  const fechaFin = addMinutes(fechaInicio, cita.duracionMinutos);
+
+  // Determinar color según estado
+  let colorId = '2'; // Verde por defecto
+  if (cita.estado === 'CANCELADA') colorId = '11'; // Rojo
+  if (cita.estado === 'COMPLETADA') colorId = '10'; // Gris
+  if (cita.estado === 'PENDIENTE') colorId = '5'; // Amarillo
+
+  const evento: calendar_v3.Schema$Event = {
+    summary: `${cita.servicioNombre} - ${cita.cliente.nombre}`,
+    description: `
+Cliente: ${cita.cliente.nombre}
+Teléfono: ${cita.cliente.telefono}
+Servicio: ${cita.servicioNombre}
+Estado: ${cita.estado}
+Radicado: ${cita.radicado}
+${cita.notas ? `Notas: ${cita.notas}` : ''}
+${cita.motivoCancelacion ? `Motivo cancelación: ${cita.motivoCancelacion}` : ''}
+    `.trim(),
+    start: {
+      dateTime: fechaInicio.toISOString(),
+      timeZone: 'America/Bogota',
+    },
+    end: {
+      dateTime: fechaFin.toISOString(),
+      timeZone: 'America/Bogota',
+    },
+    colorId,
+    reminders: {
+      useDefault: false,
+      overrides: [
+        { method: 'popup', minutes: 30 },
+        { method: 'popup', minutes: 10 },
+      ],
+    },
+  };
+
+  try {
+    const response = await calendar.events.insert({
+      calendarId: 'primary',
+      requestBody: evento,
+    });
+
+    // Guardar el googleEventId en la base de datos
+    await prisma.cita.update({
+      where: { id: citaId },
+      data: { googleEventId: response.data.id! },
+    });
+
+    console.log(`✅ Cita sincronizada a Google Calendar: ${cita.radicado}`);
+    return { 
+      success: true, 
+      eventId: response.data.id,
+      htmlLink: response.data.htmlLink 
+    };
+  } catch (error) {
+    console.error(`❌ Error al sincronizar cita ${citaId}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * 🌟 NUEVO: Sincroniza todas las citas futuras de un empleado
+ * Útil cuando se conecta Google Calendar por primera vez
+ */
+async sincronizarCitasFuturas(empleadoId: string) {
+  try {
+    // Verificar que el empleado tenga calendario conectado
+    const empleado = await prisma.empleado.findUnique({
+      where: { id: empleadoId },
+    });
+
+    if (!empleado?.calendarioSincronizado) {
+      throw new Error('El empleado no tiene Google Calendar conectado');
+    }
+
+    // Obtener todas las citas futuras del empleado que NO estén sincronizadas
+    const citasFuturas = await prisma.cita.findMany({
+      where: {
+        empleadoId,
+        googleEventId: null, // Solo las que NO tienen evento en Google Calendar
+        fechaHora: {
+          gte: new Date(), // Solo futuras
+        },
+        estado: {
+          in: ['PENDIENTE', 'CONFIRMADA'], // Solo activas
+        },
+      },
+      include: {
+        cliente: true,
+        empleado: true,
+      },
+      orderBy: {
+        fechaHora: 'asc',
+      },
+    });
+
+    console.log(`📅 Encontradas ${citasFuturas.length} citas futuras para sincronizar`);
+
+    const resultados = {
+      total: citasFuturas.length,
+      sincronizadas: 0,
+      errores: 0,
+      detalles: [] as any[],
+    };
+
+    // Sincronizar cada cita
+    for (const cita of citasFuturas) {
+      try {
+        await this.sincronizarCitaExistente(cita.id);
+        resultados.sincronizadas++;
+        resultados.detalles.push({
+          radicado: cita.radicado,
+          fecha: cita.fechaHora,
+          cliente: cita.cliente.nombre,
+          estado: 'sincronizada',
+        });
+      } catch (error: any) {
+        resultados.errores++;
+        resultados.detalles.push({
+          radicado: cita.radicado,
+          fecha: cita.fechaHora,
+          cliente: cita.cliente.nombre,
+          estado: 'error',
+          error: error.message,
+        });
+        console.error(`❌ Error sincronizando cita ${cita.radicado}:`, error.message);
+      }
+
+      // Pequeña pausa para no saturar la API de Google
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    console.log(`✅ Sincronización completada: ${resultados.sincronizadas}/${resultados.total} exitosas`);
+    return resultados;
+  } catch (error) {
+    console.error('❌ Error en sincronización masiva:', error);
+    throw error;
+  }
+}
 }
 
 export const googleCalendarService = new GoogleCalendarService();

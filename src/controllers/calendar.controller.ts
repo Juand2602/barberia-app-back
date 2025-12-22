@@ -155,6 +155,52 @@ export class CalendarController {
       });
     }
   }
+
+  // POST /api/calendar/sync-existing/:empleadoId
+async sincronizarCitasExistentes(req: Request, res: Response) {
+  try {
+    const { empleadoId } = req.params;
+    
+    console.log(`🔄 Iniciando sincronización de citas existentes para empleado: ${empleadoId}`);
+    
+    const resultados = await googleCalendarService.sincronizarCitasFuturas(empleadoId);
+
+    res.json({
+      success: true,
+      message: `Sincronización completada: ${resultados.sincronizadas} de ${resultados.total} citas sincronizadas`,
+      resultados,
+    });
+  } catch (error: any) {
+    console.error('❌ Error en sincronización:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+}
+
+// POST /api/calendar/sync-single/:citaId
+async sincronizarCitaUnica(req: Request, res: Response) {
+  try {
+    const { citaId } = req.params;
+    
+    console.log(`🔄 Sincronizando cita individual: ${citaId}`);
+    
+    const resultado = await googleCalendarService.sincronizarCitaExistente(citaId);
+
+    res.json({
+      success: true,
+      message: 'Cita sincronizada exitosamente',
+      resultado,
+    });
+  } catch (error: any) {
+    console.error('❌ Error sincronizando cita:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+}
 }
 
 export const calendarController = new CalendarController();
