@@ -1,8 +1,4 @@
-// src/services/google-calendar.service.ts - MEJORADO
-// 🎯 MEJORAS:
-// 1. ✅ Detectar eventos bloqueados en Google Calendar
-// 2. ✅ Sincronizar bloqueos automáticamente
-// 3. ✅ Excluir horarios bloqueados al calcular disponibilidad
+// src/services/google-calendar.service.ts - VERSIÓN MEJORADA 🔥
 
 import { google, calendar_v3 } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
@@ -33,7 +29,7 @@ export class GoogleCalendarService {
       access_type: 'offline',
       scope: scopes,
       state: empleadoId,
-      prompt: 'consent',
+      prompt: 'consent', // Esto fuerza a que siempre devuelva refresh_token
     });
   }
 
@@ -44,67 +40,185 @@ export class GoogleCalendarService {
     try {
       const { tokens } = await this.oauth2Client.getToken(code);
       
+      console.log('✅ Tokens obtenidos de Google:', {
+        has_access_token: !!tokens.access_token,
+        has_refresh_token: !!tokens.refresh_token,
+        expiry_date: tokens.expiry_date ? new Date(tokens.expiry_date).toISOString() : null,
+      });
+
+      if (!tokens.refresh_token) {
+        console.error('⚠️ WARNING: No se recibió refresh_token. Esto puede causar problemas.');
+      }
+
       // Guardar tokens en la base de datos
       await prisma.empleado.update({
         where: { id: empleadoId },
         data: {
           googleAccessToken: tokens.access_token!,
-          googleRefreshToken: tokens.refresh_token!,
+          googleRefreshToken: tokens.refresh_token || undefined, // Solo actualizar si existe
           googleTokenExpiry: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
           calendarioSincronizado: true,
         },
       });
 
+      console.log(`✅ Calendario conectado para empleado ${empleadoId}`);
       return { success: true };
     } catch (error) {
-      console.error('Error en callback de Google:', error);
+      console.error('❌ Error en callback de Google:', error);
       throw new Error('Error al autorizar Google Calendar');
     }
   }
 
   /**
-   * Obtiene el cliente de Calendar API para un empleado
+   * 🔥 MEJORADO: Verifica y renueva el token de manera proactiva
+   * Renueva 5 minutos ANTES de que expire para evitar problemas
+   */
+  private async renovarTokenSiEsNecesario(empleadoId: string): Promise<boolean> {
+    try {
+      const empleado = await prisma.empleado.findUnique({
+        where: { id: empleadoId },
+        select: {
+          googleAccessToken: true,
+          googleRefreshToken: true,
+          googleTokenExpiry: true,
+          nombre: true,
+        },
+      });
+
+      if (!empleado?.googleAccessToken || !empleado?.googleRefreshToken) {
+        console.log(`⚠️ Empleado ${empleado?.nombre || empleadoId} no tiene tokens de Google Calendar`);
+        return false;
+      }
+
+      // 🔥 Verificar si el token expira en los próximos 5 minutos (proactivo)
+      const ahora = new Date();
+      const margenSeguridad = 5 * 60 * 1000; // 5 minutos en milisegundos
+      const expiraProximamente = empleado.googleTokenExpiry 
+        ? empleado.googleTokenExpiry.getTime() - ahora.getTime() < margenSeguridad
+        : true; // Si no hay fecha de expiración, renovar por seguridad
+
+      if (expiraProximamente) {
+        console.log(`🔄 Renovando token para ${empleado.nombre} (expira: ${empleado.googleTokenExpiry?.toISOString() || 'desconocido'})`);
+
+        this.oauth2Client.setCredentials({
+          refresh_token: empleado.googleRefreshToken,
+        });
+
+        const { credentials } = await this.oauth2Client.refreshAccessToken();
+        
+        // Actualizar en base de datos
+        await prisma.empleado.update({
+          where: { id: empleadoId },
+          data: {
+            googleAccessToken: credentials.access_token!,
+            googleTokenExpiry: credentials.expiry_date ? new Date(credentials.expiry_date) : null,
+            // NO actualizar refresh_token aquí, solo si viene uno nuevo
+            ...(credentials.refresh_token && { googleRefreshToken: credentials.refresh_token }),
+          },
+        });
+
+        console.log(`✅ Token renovado exitosamente para ${empleado.nombre}`);
+        console.log(`   Nuevo expiry: ${credentials.expiry_date ? new Date(credentials.expiry_date).toISOString() : 'N/A'}`);
+
+        return true;
+      }
+
+      console.log(`✓ Token vigente para ${empleado.nombre} (expira: ${empleado.googleTokenExpiry?.toISOString()})`);
+      return true;
+
+    } catch (error: any) {
+      console.error(`❌ Error renovando token para empleado ${empleadoId}:`, {
+        message: error.message,
+        code: error.code,
+      });
+      
+      // Si el refresh token es inválido, desconectar el calendario
+      if (error.code === 'invalid_grant' || error.message?.includes('invalid_grant')) {
+        console.error(`🚨 Refresh token inválido para empleado ${empleadoId}. Desconectando calendario...`);
+        await this.desconectarCalendario(empleadoId);
+      }
+      
+      return false;
+    }
+  }
+
+  /**
+   * 🔥 MEJORADO: Obtiene el cliente de Calendar API con renovación automática
    */
   private async getCalendarClient(empleadoId: string): Promise<calendar_v3.Calendar | null> {
+    // 1. Renovar token si es necesario
+    const tokenValido = await this.renovarTokenSiEsNecesario(empleadoId);
+    if (!tokenValido) {
+      return null;
+    }
+
+    // 2. Obtener tokens actualizados de la BD
     const empleado = await prisma.empleado.findUnique({
       where: { id: empleadoId },
+      select: {
+        googleAccessToken: true,
+        googleRefreshToken: true,
+        googleTokenExpiry: true,
+      },
     });
 
     if (!empleado?.googleAccessToken || !empleado?.googleRefreshToken) {
       return null;
     }
 
+    // 3. Configurar cliente
     this.oauth2Client.setCredentials({
       access_token: empleado.googleAccessToken,
       refresh_token: empleado.googleRefreshToken,
       expiry_date: empleado.googleTokenExpiry?.getTime(),
     });
 
-    // Verificar si el token expiró y renovarlo
-    if (empleado.googleTokenExpiry && new Date() > empleado.googleTokenExpiry) {
-      try {
-        const { credentials } = await this.oauth2Client.refreshAccessToken();
-        
-        await prisma.empleado.update({
-          where: { id: empleadoId },
-          data: {
-            googleAccessToken: credentials.access_token!,
-            googleTokenExpiry: credentials.expiry_date ? new Date(credentials.expiry_date) : null,
-          },
-        });
-
-        this.oauth2Client.setCredentials(credentials);
-      } catch (error) {
-        console.error('Error al renovar token:', error);
-        return null;
-      }
-    }
-
     return google.calendar({ version: 'v3', auth: this.oauth2Client });
   }
 
   /**
-   * Crea un evento en Google Calendar cuando se agenda una cita
+   * 🔥 NUEVO: Wrapper para ejecutar operaciones con manejo de errores de autenticación
+   */
+  private async ejecutarConReintentos<T>(
+    empleadoId: string,
+    operacion: (calendar: calendar_v3.Calendar) => Promise<T>,
+    nombreOperacion: string
+  ): Promise<T | null> {
+    try {
+      const calendar = await this.getCalendarClient(empleadoId);
+      if (!calendar) {
+        console.log(`⚠️ No se pudo obtener cliente de calendario para ${nombreOperacion}`);
+        return null;
+      }
+
+      return await operacion(calendar);
+
+    } catch (error: any) {
+      // Si es error de autenticación (401/403), intentar renovar y reintentar UNA vez
+      if (error.code === 401 || error.code === 403 || error.message?.includes('invalid_grant')) {
+        console.log(`🔄 Error de autenticación en ${nombreOperacion}, renovando token y reintentando...`);
+        
+        const tokenRenovado = await this.renovarTokenSiEsNecesario(empleadoId);
+        if (tokenRenovado) {
+          const calendar = await this.getCalendarClient(empleadoId);
+          if (calendar) {
+            try {
+              return await operacion(calendar);
+            } catch (error2: any) {
+              console.error(`❌ Error en reintento de ${nombreOperacion}:`, error2.message);
+              return null;
+            }
+          }
+        }
+      }
+
+      console.error(`❌ Error en ${nombreOperacion}:`, error.message);
+      return null;
+    }
+  }
+
+  /**
+   * 🔥 MEJORADO: Crea un evento con manejo de errores robusto
    */
   async crearEvento(citaId: string) {
     const cita = await prisma.cita.findUnique({
@@ -114,12 +228,6 @@ export class GoogleCalendarService {
 
     if (!cita) {
       throw new Error('Cita no encontrada');
-    }
-
-    const calendar = await this.getCalendarClient(cita.empleadoId);
-    if (!calendar) {
-      console.log(`Empleado ${cita.empleado.nombre} no tiene Google Calendar conectado`);
-      return;
     }
 
     const fechaInicio = new Date(cita.fechaHora);
@@ -152,27 +260,33 @@ ${cita.notas ? `Notas: ${cita.notas}` : ''}
       },
     };
 
-    try {
-      const response = await calendar.events.insert({
-        calendarId: 'primary',
-        requestBody: evento,
-      });
+    const resultado = await this.ejecutarConReintentos(
+      cita.empleadoId,
+      async (calendar) => {
+        const response = await calendar.events.insert({
+          calendarId: 'primary',
+          requestBody: evento,
+        });
+        return response.data;
+      },
+      'crearEvento'
+    );
 
+    if (resultado) {
       await prisma.cita.update({
         where: { id: citaId },
-        data: { googleEventId: response.data.id! },
+        data: { googleEventId: resultado.id! },
       });
 
-      console.log(`✅ Evento creado en Google Calendar: ${response.data.htmlLink}`);
-      return response.data;
-    } catch (error) {
-      console.error('Error al crear evento en Google Calendar:', error);
-      throw error;
+      console.log(`✅ Evento creado en Google Calendar: ${resultado.htmlLink}`);
+      return resultado;
+    } else {
+      console.log(`⚠️ No se pudo crear evento en Google Calendar para cita ${cita.radicado}`);
     }
   }
 
   /**
-   * Actualiza un evento en Google Calendar
+   * 🔥 MEJORADO: Actualiza un evento con manejo de errores
    */
   async actualizarEvento(citaId: string) {
     const cita = await prisma.cita.findUnique({
@@ -184,15 +298,9 @@ ${cita.notas ? `Notas: ${cita.notas}` : ''}
       return;
     }
 
-    const calendar = await this.getCalendarClient(cita.empleadoId);
-    if (!calendar) {
-      return;
-    }
-
     const fechaInicio = new Date(cita.fechaHora);
     const fechaFin = addMinutes(fechaInicio, cita.duracionMinutos);
 
-    // Color según estado
     let colorId = '2'; // Verde
     if (cita.estado === 'CANCELADA') colorId = '11'; // Rojo
     if (cita.estado === 'COMPLETADA') colorId = '10'; // Gris
@@ -219,136 +327,100 @@ ${cita.motivoCancelacion ? `Motivo cancelación: ${cita.motivoCancelacion}` : ''
       colorId,
     };
 
-    try {
-      await calendar.events.update({
-        calendarId: 'primary',
-        eventId: cita.googleEventId,
-        requestBody: evento,
-      });
-
-      console.log(`✅ Evento actualizado en Google Calendar`);
-    } catch (error) {
-      console.error('Error al actualizar evento:', error);
-    }
+    await this.ejecutarConReintentos(
+      cita.empleadoId,
+      async (calendar) => {
+        await calendar.events.update({
+          calendarId: 'primary',
+          eventId: cita.googleEventId!,
+          requestBody: evento,
+        });
+        return true;
+      },
+      'actualizarEvento'
+    );
   }
 
   /**
-   * 🌟 NUEVO: Obtiene todos los eventos del calendario en un rango de fechas
-   * Útil para detectar bloqueos de horarios
+   * 🔥 MEJORADO: Obtiene eventos con manejo de errores
    */
-async obtenerEventosDelDia(empleadoId: string, fecha: Date): Promise<Array<{
+  async obtenerEventosDelDia(empleadoId: string, fecha: Date): Promise<Array<{
     inicio: Date;
     fin: Date;
     resumen: string;
     esBloqueo: boolean;
   }>> {
-    const calendar = await this.getCalendarClient(empleadoId);
-    if (!calendar) {
-      return [];
-    }
-
     const inicioDia = startOfDay(fecha);
     const finDia = endOfDay(fecha);
 
-    try {
-      const response = await calendar.events.list({
-        calendarId: 'primary',
-        timeMin: inicioDia.toISOString(),
-        timeMax: finDia.toISOString(),
-        singleEvents: true,
-        orderBy: 'startTime',
-      });
+    const resultado = await this.ejecutarConReintentos(
+      empleadoId,
+      async (calendar) => {
+        const response = await calendar.events.list({
+          calendarId: 'primary',
+          timeMin: inicioDia.toISOString(),
+          timeMax: finDia.toISOString(),
+          singleEvents: true,
+          orderBy: 'startTime',
+        });
+        return response.data.items || [];
+      },
+      'obtenerEventosDelDia'
+    );
 
-      const eventos = response.data.items || [];
-
-      return eventos
-        .map(evento => {
-          // 🔧 NUEVO: Manejar eventos de "todo el día" (date) y eventos con hora (dateTime)
-          let inicio: Date;
-          let fin: Date;
-
-          if (evento.start?.date) {
-            // Evento de TODO EL DÍA
-            inicio = new Date(evento.start.date);
-            inicio.setHours(0, 0, 0, 0);
-            
-            fin = new Date(evento.end?.date || evento.start.date);
-            fin.setHours(23, 59, 59, 999);
-            
-            console.log(`📅 Evento TODO EL DÍA detectado: ${evento.summary} (${evento.start.date})`);
-          } else if (evento.start?.dateTime && evento.end?.dateTime) {
-            // Evento con HORA ESPECÍFICA
-            inicio = new Date(evento.start.dateTime);
-            fin = new Date(evento.end.dateTime);
-          } else {
-            // Evento sin información de tiempo válida, omitir
-            return null;
-          }
-
-          const resumen = evento.summary || '';
-          
-          // Detectar si es un bloqueo (eventos que contienen palabras clave)
-          const esBloqueo = this.esEventoDeBloqueo(resumen, evento.description);
-
-          return {
-            inicio,
-            fin,
-            resumen,
-            esBloqueo,
-          };
-        })
-        .filter((evento): evento is NonNullable<typeof evento> => evento !== null); // Filtrar nulls
-    } catch (error) {
-      console.error('Error al obtener eventos del calendario:', error);
+    if (!resultado) {
       return [];
     }
+
+    return resultado
+      .map(evento => {
+        let inicio: Date;
+        let fin: Date;
+
+        if (evento.start?.date) {
+          inicio = new Date(evento.start.date);
+          inicio.setHours(0, 0, 0, 0);
+          
+          fin = new Date(evento.end?.date || evento.start.date);
+          fin.setHours(23, 59, 59, 999);
+          
+          console.log(`📅 Evento TODO EL DÍA detectado: ${evento.summary} (${evento.start.date})`);
+        } else if (evento.start?.dateTime && evento.end?.dateTime) {
+          inicio = new Date(evento.start.dateTime);
+          fin = new Date(evento.end.dateTime);
+        } else {
+          return null;
+        }
+
+        const resumen = evento.summary || '';
+        const esBloqueo = this.esEventoDeBloqueo(resumen, evento.description);
+
+        return { inicio, fin, resumen, esBloqueo };
+      })
+      .filter((evento): evento is NonNullable<typeof evento> => evento !== null);
   }
 
-  /**
-   * 🌟 NUEVO: Determina si un evento es un bloqueo de horario
-   * Busca palabras clave como: bloqueado, ocupado, no disponible, etc.
-   */
   private esEventoDeBloqueo(resumen: string, descripcion?: string | null): boolean {
     const texto = `${resumen} ${descripcion || ''}`.toLowerCase();
     
     const palabrasClave = [
-      'bloqueado',
-      'bloqueo',
-      'ocupado',
-      'no disponible',
-      'cerrado',
-      'personal',
-      'privado',
-      'fuera de oficina',
-      'vacaciones',
-      'día libre',
-      'break',
-      'descanso',
+      'bloqueado', 'bloqueo', 'ocupado', 'no disponible',
+      'cerrado', 'personal', 'privado', 'fuera de oficina',
+      'vacaciones', 'día libre', 'break', 'descanso',
     ];
 
     return palabrasClave.some(palabra => texto.includes(palabra));
   }
 
-  /**
-   * 🌟 NUEVO: Obtiene los horarios bloqueados de un empleado para una fecha
-   * Se integra con el cálculo de horarios disponibles
-   */
   async obtenerHorariosBloqueados(
     empleadoId: string, 
     fecha: Date
   ): Promise<Array<{ inicio: Date; fin: Date }>> {
     const eventos = await this.obtenerEventosDelDia(empleadoId, fecha);
     
-    // Filtrar solo eventos que NO son citas del sistema (bloqueos externos)
     const bloqueos = eventos
-      .filter(evento => {
-        // Si el evento contiene "Radicado:" es una cita del sistema, no un bloqueo
-        return !evento.resumen.includes('RAD-') && evento.esBloqueo;
-      })
-      .map(evento => ({
-        inicio: evento.inicio,
-        fin: evento.fin,
-      }));
+      .filter(evento => !evento.resumen.includes('RAD-') && evento.esBloqueo)
+      .map(evento => ({ inicio: evento.inicio, fin: evento.fin }));
 
     if (bloqueos.length > 0) {
       console.log(`🚫 ${bloqueos.length} bloqueos encontrados en Google Calendar para ${fecha.toLocaleDateString()}`);
@@ -357,9 +429,6 @@ async obtenerEventosDelDia(empleadoId: string, fecha: Date): Promise<Array<{
     return bloqueos;
   }
 
-  /**
-   * Desconecta el calendario de un empleado
-   */
   async desconectarCalendario(empleadoId: string) {
     await prisma.empleado.update({
       where: { id: empleadoId },
@@ -371,46 +440,36 @@ async obtenerEventosDelDia(empleadoId: string, fecha: Date): Promise<Array<{
         calendarioSincronizado: false,
       },
     });
-  }
-  /**
- * 🌟 NUEVO: Sincroniza una cita existente hacia Google Calendar
- * Útil para citas que ya estaban en la BD antes de conectar el calendario
- */
-async sincronizarCitaExistente(citaId: string) {
-  const cita = await prisma.cita.findUnique({
-    where: { id: citaId },
-    include: { cliente: true, empleado: true },
-  });
-
-  if (!cita) {
-    throw new Error('Cita no encontrada');
+    
+    console.log(`🔌 Calendario desconectado para empleado ${empleadoId}`);
   }
 
-  // Si ya tiene googleEventId, actualizar en lugar de crear
-  if (cita.googleEventId) {
-    console.log(`⚠️ Cita ${citaId} ya tiene evento en Google Calendar, actualizando...`);
-    return await this.actualizarEvento(citaId);
-  }
+  async sincronizarCitaExistente(citaId: string) {
+    const cita = await prisma.cita.findUnique({
+      where: { id: citaId },
+      include: { cliente: true, empleado: true },
+    });
 
-  // Verificar que el empleado tenga Google Calendar conectado
-  const calendar = await this.getCalendarClient(cita.empleadoId);
-  if (!calendar) {
-    console.log(`⚠️ Empleado ${cita.empleado.nombre} no tiene Google Calendar conectado`);
-    return { success: false, motivo: 'Calendario no conectado' };
-  }
+    if (!cita) {
+      throw new Error('Cita no encontrada');
+    }
 
-  const fechaInicio = new Date(cita.fechaHora);
-  const fechaFin = addMinutes(fechaInicio, cita.duracionMinutos);
+    if (cita.googleEventId) {
+      console.log(`⚠️ Cita ${citaId} ya tiene evento en Google Calendar, actualizando...`);
+      return await this.actualizarEvento(citaId);
+    }
 
-  // Determinar color según estado
-  let colorId = '2'; // Verde por defecto
-  if (cita.estado === 'CANCELADA') colorId = '11'; // Rojo
-  if (cita.estado === 'COMPLETADA') colorId = '10'; // Gris
-  if (cita.estado === 'PENDIENTE') colorId = '5'; // Amarillo
+    const fechaInicio = new Date(cita.fechaHora);
+    const fechaFin = addMinutes(fechaInicio, cita.duracionMinutos);
 
-  const evento: calendar_v3.Schema$Event = {
-    summary: `${cita.servicioNombre} - ${cita.cliente.nombre}`,
-    description: `
+    let colorId = '2';
+    if (cita.estado === 'CANCELADA') colorId = '11';
+    if (cita.estado === 'COMPLETADA') colorId = '10';
+    if (cita.estado === 'PENDIENTE') colorId = '5';
+
+    const evento: calendar_v3.Schema$Event = {
+      summary: `${cita.servicioNombre} - ${cita.cliente.nombre}`,
+      description: `
 Cliente: ${cita.cliente.nombre}
 Teléfono: ${cita.cliente.telefono}
 Servicio: ${cita.servicioNombre}
@@ -418,128 +477,106 @@ Estado: ${cita.estado}
 Radicado: ${cita.radicado}
 ${cita.notas ? `Notas: ${cita.notas}` : ''}
 ${cita.motivoCancelacion ? `Motivo cancelación: ${cita.motivoCancelacion}` : ''}
-    `.trim(),
-    start: {
-      dateTime: fechaInicio.toISOString(),
-      timeZone: 'America/Bogota',
-    },
-    end: {
-      dateTime: fechaFin.toISOString(),
-      timeZone: 'America/Bogota',
-    },
-    colorId,
-    reminders: {
-      useDefault: false,
-      overrides: [
-        { method: 'popup', minutes: 30 },
-        { method: 'popup', minutes: 10 },
-      ],
-    },
-  };
-
-  try {
-    const response = await calendar.events.insert({
-      calendarId: 'primary',
-      requestBody: evento,
-    });
-
-    // Guardar el googleEventId en la base de datos
-    await prisma.cita.update({
-      where: { id: citaId },
-      data: { googleEventId: response.data.id! },
-    });
-
-    console.log(`✅ Cita sincronizada a Google Calendar: ${cita.radicado}`);
-    return { 
-      success: true, 
-      eventId: response.data.id,
-      htmlLink: response.data.htmlLink 
+      `.trim(),
+      start: { dateTime: fechaInicio.toISOString(), timeZone: 'America/Bogota' },
+      end: { dateTime: fechaFin.toISOString(), timeZone: 'America/Bogota' },
+      colorId,
+      reminders: {
+        useDefault: false,
+        overrides: [
+          { method: 'popup', minutes: 30 },
+          { method: 'popup', minutes: 10 },
+        ],
+      },
     };
-  } catch (error) {
-    console.error(`❌ Error al sincronizar cita ${citaId}:`, error);
-    throw error;
-  }
-}
 
-/**
- * 🌟 NUEVO: Sincroniza todas las citas futuras de un empleado
- * Útil cuando se conecta Google Calendar por primera vez
- */
-async sincronizarCitasFuturas(empleadoId: string) {
-  try {
-    // Verificar que el empleado tenga calendario conectado
-    const empleado = await prisma.empleado.findUnique({
-      where: { id: empleadoId },
-    });
+    const resultado = await this.ejecutarConReintentos(
+      cita.empleadoId,
+      async (calendar) => {
+        const response = await calendar.events.insert({
+          calendarId: 'primary',
+          requestBody: evento,
+        });
+        return response.data;
+      },
+      'sincronizarCitaExistente'
+    );
 
-    if (!empleado?.calendarioSincronizado) {
-      throw new Error('El empleado no tiene Google Calendar conectado');
+    if (resultado) {
+      await prisma.cita.update({
+        where: { id: citaId },
+        data: { googleEventId: resultado.id! },
+      });
+
+      console.log(`✅ Cita sincronizada a Google Calendar: ${cita.radicado}`);
+      return { success: true, eventId: resultado.id, htmlLink: resultado.htmlLink };
+    } else {
+      return { success: false, motivo: 'Error al sincronizar con Google Calendar' };
     }
+  }
 
-    // Obtener todas las citas futuras del empleado que NO estén sincronizadas
-    const citasFuturas = await prisma.cita.findMany({
-      where: {
-        empleadoId,
-        googleEventId: null, // Solo las que NO tienen evento en Google Calendar
-        fechaHora: {
-          gte: new Date(), // Solo futuras
-        },
-        estado: {
-          in: ['PENDIENTE', 'CONFIRMADA'], // Solo activas
-        },
-      },
-      include: {
-        cliente: true,
-        empleado: true,
-      },
-      orderBy: {
-        fechaHora: 'asc',
-      },
-    });
+  async sincronizarCitasFuturas(empleadoId: string) {
+    try {
+      const empleado = await prisma.empleado.findUnique({
+        where: { id: empleadoId },
+      });
 
-    console.log(`📅 Encontradas ${citasFuturas.length} citas futuras para sincronizar`);
-
-    const resultados = {
-      total: citasFuturas.length,
-      sincronizadas: 0,
-      errores: 0,
-      detalles: [] as any[],
-    };
-
-    // Sincronizar cada cita
-    for (const cita of citasFuturas) {
-      try {
-        await this.sincronizarCitaExistente(cita.id);
-        resultados.sincronizadas++;
-        resultados.detalles.push({
-          radicado: cita.radicado,
-          fecha: cita.fechaHora,
-          cliente: cita.cliente.nombre,
-          estado: 'sincronizada',
-        });
-      } catch (error: any) {
-        resultados.errores++;
-        resultados.detalles.push({
-          radicado: cita.radicado,
-          fecha: cita.fechaHora,
-          cliente: cita.cliente.nombre,
-          estado: 'error',
-          error: error.message,
-        });
-        console.error(`❌ Error sincronizando cita ${cita.radicado}:`, error.message);
+      if (!empleado?.calendarioSincronizado) {
+        throw new Error('El empleado no tiene Google Calendar conectado');
       }
 
-      // Pequeña pausa para no saturar la API de Google
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
+      const citasFuturas = await prisma.cita.findMany({
+        where: {
+          empleadoId,
+          googleEventId: null,
+          fechaHora: { gte: new Date() },
+          estado: { in: ['PENDIENTE', 'CONFIRMADA'] },
+        },
+        include: { cliente: true, empleado: true },
+        orderBy: { fechaHora: 'asc' },
+      });
 
-    console.log(`✅ Sincronización completada: ${resultados.sincronizadas}/${resultados.total} exitosas`);
-    return resultados;
-  } catch (error) {
-    console.error('❌ Error en sincronización masiva:', error);
-    throw error;
+      console.log(`📅 Encontradas ${citasFuturas.length} citas futuras para sincronizar`);
+
+      const resultados = {
+        total: citasFuturas.length,
+        sincronizadas: 0,
+        errores: 0,
+        detalles: [] as any[],
+      };
+
+      for (const cita of citasFuturas) {
+        try {
+          await this.sincronizarCitaExistente(cita.id);
+          resultados.sincronizadas++;
+          resultados.detalles.push({
+            radicado: cita.radicado,
+            fecha: cita.fechaHora,
+            cliente: cita.cliente.nombre,
+            estado: 'sincronizada',
+          });
+        } catch (error: any) {
+          resultados.errores++;
+          resultados.detalles.push({
+            radicado: cita.radicado,
+            fecha: cita.fechaHora,
+            cliente: cita.cliente.nombre,
+            estado: 'error',
+            error: error.message,
+          });
+          console.error(`❌ Error sincronizando cita ${cita.radicado}:`, error.message);
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      console.log(`✅ Sincronización completada: ${resultados.sincronizadas}/${resultados.total} exitosas`);
+      return resultados;
+    } catch (error) {
+      console.error('❌ Error en sincronización masiva:', error);
+      throw error;
+    }
   }
-}
 }
 
 export const googleCalendarService = new GoogleCalendarService();
