@@ -11,4 +11,14 @@ prisma.$connect()
     console.error('❌ Error al conectar base de datos:', err);
   });
 
+// Liberar conexiones al apagar el servidor
+process.on('SIGINT', async () => {
+  await prisma.$disconnect();
+  process.exit(0);
+});
+process.on('SIGTERM', async () => {
+  await prisma.$disconnect();
+  process.exit(0);
+});
+
 export default prisma;

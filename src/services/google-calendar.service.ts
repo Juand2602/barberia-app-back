@@ -1,15 +1,24 @@
 // src/services/google-calendar.service.ts - VERSIÓN MEJORADA 🔥
 
-import { google, calendar_v3 } from 'googleapis';
-import { OAuth2Client } from 'google-auth-library';
+import { calendar, calendar_v3, auth as googleAuth } from '@googleapis/calendar';
+import type { OAuth2Client } from 'google-auth-library';
 import prisma from '../config/database';
 import { addMinutes, startOfDay, endOfDay } from 'date-fns';
 
+interface TokenCache {
+  accessToken: string;
+  refreshToken: string;
+  expiry: number; // timestamp ms
+}
+
 export class GoogleCalendarService {
-  private oauth2Client: OAuth2Client;
+  private oauth2Client: InstanceType<typeof googleAuth.OAuth2>;
+  // Caché en memoria para evitar queries a BD en cada operación de calendario
+  private tokenCache = new Map<string, TokenCache>();
+  private readonly CACHE_BUFFER_MS = 5 * 60 * 1000; // 5 minutos de margen
 
   constructor() {
-    this.oauth2Client = new google.auth.OAuth2(
+    this.oauth2Client = new googleAuth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,
       process.env.GOOGLE_CLIENT_SECRET,
       process.env.GOOGLE_REDIRECT_URI
@@ -70,11 +79,19 @@ export class GoogleCalendarService {
   }
 
   /**
-   * 🔥 MEJORADO: Verifica y renueva el token de manera proactiva
-   * Renueva 5 minutos ANTES de que expire para evitar problemas
+   * 🔥 MEJORADO: Verifica y renueva el token de manera proactiva.
+   * Usa caché en memoria para evitar queries a BD cuando el token aún es válido.
    */
   private async renovarTokenSiEsNecesario(empleadoId: string): Promise<boolean> {
     try {
+      const ahora = Date.now();
+
+      // Revisar caché primero — evita query a BD si el token sigue vigente
+      const cached = this.tokenCache.get(empleadoId);
+      if (cached && cached.expiry - ahora > this.CACHE_BUFFER_MS) {
+        return true;
+      }
+
       const empleado = await prisma.empleado.findUnique({
         where: { id: empleadoId },
         select: {
@@ -90,40 +107,46 @@ export class GoogleCalendarService {
         return false;
       }
 
-      // 🔥 Verificar si el token expira en los próximos 5 minutos (proactivo)
-      const ahora = new Date();
-      const margenSeguridad = 5 * 60 * 1000; // 5 minutos en milisegundos
-      const expiraProximamente = empleado.googleTokenExpiry 
-        ? empleado.googleTokenExpiry.getTime() - ahora.getTime() < margenSeguridad
-        : true; // Si no hay fecha de expiración, renovar por seguridad
+      const expiraProximamente = empleado.googleTokenExpiry
+        ? empleado.googleTokenExpiry.getTime() - ahora < this.CACHE_BUFFER_MS
+        : true;
 
       if (expiraProximamente) {
-        console.log(`🔄 Renovando token para ${empleado.nombre} (expira: ${empleado.googleTokenExpiry?.toISOString() || 'desconocido'})`);
+        console.log(`🔄 Renovando token para ${empleado.nombre}`);
 
         this.oauth2Client.setCredentials({
           refresh_token: empleado.googleRefreshToken,
         });
 
         const { credentials } = await this.oauth2Client.refreshAccessToken();
-        
-        // Actualizar en base de datos
+
         await prisma.empleado.update({
           where: { id: empleadoId },
           data: {
             googleAccessToken: credentials.access_token!,
             googleTokenExpiry: credentials.expiry_date ? new Date(credentials.expiry_date) : null,
-            // NO actualizar refresh_token aquí, solo si viene uno nuevo
             ...(credentials.refresh_token && { googleRefreshToken: credentials.refresh_token }),
           },
         });
 
-        console.log(`✅ Token renovado exitosamente para ${empleado.nombre}`);
-        console.log(`   Nuevo expiry: ${credentials.expiry_date ? new Date(credentials.expiry_date).toISOString() : 'N/A'}`);
+        // Actualizar caché con los nuevos tokens
+        this.tokenCache.set(empleadoId, {
+          accessToken: credentials.access_token!,
+          refreshToken: credentials.refresh_token || empleado.googleRefreshToken,
+          expiry: credentials.expiry_date || ahora + 3600 * 1000,
+        });
 
+        console.log(`✅ Token renovado para ${empleado.nombre}`);
         return true;
       }
 
-      console.log(`✓ Token vigente para ${empleado.nombre} (expira: ${empleado.googleTokenExpiry?.toISOString()})`);
+      // Token vigente — guardar en caché para evitar próximas queries
+      this.tokenCache.set(empleadoId, {
+        accessToken: empleado.googleAccessToken,
+        refreshToken: empleado.googleRefreshToken,
+        expiry: empleado.googleTokenExpiry?.getTime() || ahora + 3600 * 1000,
+      });
+
       return true;
 
     } catch (error: any) {
@@ -131,49 +154,39 @@ export class GoogleCalendarService {
         message: error.message,
         code: error.code,
       });
-      
-      // Si el refresh token es inválido, desconectar el calendario
+
       if (error.code === 'invalid_grant' || error.message?.includes('invalid_grant')) {
         console.error(`🚨 Refresh token inválido para empleado ${empleadoId}. Desconectando calendario...`);
+        this.tokenCache.delete(empleadoId);
         await this.desconectarCalendario(empleadoId);
       }
-      
+
       return false;
     }
   }
 
   /**
-   * 🔥 MEJORADO: Obtiene el cliente de Calendar API con renovación automática
+   * 🔥 MEJORADO: Obtiene el cliente de Calendar API usando caché de tokens.
+   * Evita la segunda query a BD gracias al caché actualizado en renovarTokenSiEsNecesario.
    */
   private async getCalendarClient(empleadoId: string): Promise<calendar_v3.Calendar | null> {
-    // 1. Renovar token si es necesario
     const tokenValido = await this.renovarTokenSiEsNecesario(empleadoId);
     if (!tokenValido) {
       return null;
     }
 
-    // 2. Obtener tokens actualizados de la BD
-    const empleado = await prisma.empleado.findUnique({
-      where: { id: empleadoId },
-      select: {
-        googleAccessToken: true,
-        googleRefreshToken: true,
-        googleTokenExpiry: true,
-      },
-    });
-
-    if (!empleado?.googleAccessToken || !empleado?.googleRefreshToken) {
+    const cached = this.tokenCache.get(empleadoId);
+    if (!cached) {
       return null;
     }
 
-    // 3. Configurar cliente
     this.oauth2Client.setCredentials({
-      access_token: empleado.googleAccessToken,
-      refresh_token: empleado.googleRefreshToken,
-      expiry_date: empleado.googleTokenExpiry?.getTime(),
+      access_token: cached.accessToken,
+      refresh_token: cached.refreshToken,
+      expiry_date: cached.expiry,
     });
 
-    return google.calendar({ version: 'v3', auth: this.oauth2Client });
+    return calendar({ version: 'v3', auth: this.oauth2Client });
   }
 
   /**
@@ -430,6 +443,7 @@ ${cita.motivoCancelacion ? `Motivo cancelación: ${cita.motivoCancelacion}` : ''
   }
 
   async desconectarCalendario(empleadoId: string) {
+    this.tokenCache.delete(empleadoId);
     await prisma.empleado.update({
       where: { id: empleadoId },
       data: {
@@ -440,7 +454,7 @@ ${cita.motivoCancelacion ? `Motivo cancelación: ${cita.motivoCancelacion}` : ''
         calendarioSincronizado: false,
       },
     });
-    
+
     console.log(`🔌 Calendario desconectado para empleado ${empleadoId}`);
   }
 

@@ -139,40 +139,33 @@ export class ReportesService {
   }
 
   async getReporteVentasPorServicio(fechaInicio: Date, fechaFin: Date) {
-    const inicio = startOfDay(fechaInicio); 
+    const inicio = startOfDay(fechaInicio);
     const fin = endOfDay(fechaFin);
-    
-    // ✅ FILTRAR SOLO ITEMS DE TRANSACCIONES PAGADAS
-    const items = await prisma.transaccionItem.findMany({
-      where: { 
-        transaccion: { 
-          tipo: 'INGRESO', 
-          estadoPago: 'PAGADO',  // ✅ CRÍTICO
-          fecha: { gte: inicio, lte: fin } 
-        } 
+
+    const grupos = await prisma.transaccionItem.groupBy({
+      by: ['servicioId'],
+      where: {
+        transaccion: { tipo: 'INGRESO', estadoPago: 'PAGADO', fecha: { gte: inicio, lte: fin } },
       },
-      include: { servicio: true }
+      _sum: { cantidad: true, subtotal: true },
+      orderBy: { _sum: { subtotal: 'desc' } },
     });
 
-    const porServicio = items.reduce((acc, item) => {
-      const servicioId = item.servicioId; 
-      const servicioNombre = item.servicio.nombre;
-      if (!acc[servicioId]) {
-        acc[servicioId] = { 
-          servicioId, 
-          nombre: servicioNombre, 
-          cantidadVendida: 0, 
-          totalGenerado: 0 
-        };
-      }
-      acc[servicioId].cantidadVendida += item.cantidad; 
-      acc[servicioId].totalGenerado += item.subtotal;
-      return acc;
-    }, {} as Record<string, any>);
+    const servicioIds = grupos.map(g => g.servicioId);
+    const servicios = await prisma.servicio.findMany({
+      where: { id: { in: servicioIds } },
+      select: { id: true, nombre: true },
+    });
+    const nombrePorId = new Map(servicios.map(s => [s.id, s.nombre]));
 
-    return { 
-      periodo: { inicio, fin }, 
-      servicios: Object.values(porServicio).sort((a: any, b: any) => b.totalGenerado - a.totalGenerado) 
+    return {
+      periodo: { inicio, fin },
+      servicios: grupos.map(g => ({
+        servicioId: g.servicioId,
+        nombre: nombrePorId.get(g.servicioId) || g.servicioId,
+        cantidadVendida: g._sum.cantidad || 0,
+        totalGenerado: g._sum.subtotal || 0,
+      })),
     };
   }
 
@@ -402,93 +395,84 @@ async getReporteFinanciero(fechaInicio: Date, fechaFin: Date) {
 
   // ==================== MÉTODOS AUXILIARES ====================
   private async getVentasTotales(inicio: Date, fin: Date) {
-    // ✅ FILTRAR SOLO TRANSACCIONES PAGADAS
-    const transacciones = await prisma.transaccion.findMany({ 
-      where: { 
-        tipo: 'INGRESO', 
-        estadoPago: 'PAGADO',  // ✅ CRÍTICO
-        fecha: { gte: inicio, lte: fin } 
-      } 
+    const result = await prisma.transaccion.aggregate({
+      where: { tipo: 'INGRESO', estadoPago: 'PAGADO', fecha: { gte: inicio, lte: fin } },
+      _sum: { total: true },
+      _count: { id: true },
     });
-    return { 
-      total: transacciones.reduce((sum, t) => sum + t.total, 0), 
-      cantidad: transacciones.length 
-    };
+    return { total: result._sum.total || 0, cantidad: result._count.id };
   }
 
   private async getCitasTotales(inicio: Date, fin: Date) {
-    const citas = await prisma.cita.findMany({ 
-      where: { fechaHora: { gte: inicio, lte: fin } } 
-    });
-    const porEstado = citas.reduce((acc, c) => { 
-      acc[c.estado] = (acc[c.estado] || 0) + 1; 
-      return acc; 
+    const [total, grupos] = await Promise.all([
+      prisma.cita.count({ where: { fechaHora: { gte: inicio, lte: fin } } }),
+      prisma.cita.groupBy({
+        by: ['estado'],
+        where: { fechaHora: { gte: inicio, lte: fin } },
+        _count: { estado: true },
+      }),
+    ]);
+    const porEstado = grupos.reduce((acc, g) => {
+      acc[g.estado] = g._count.estado;
+      return acc;
     }, {} as Record<string, number>);
-    return { total: citas.length, porEstado };
+    return { total, porEstado };
   }
 
   private async getClientesNuevos(inicio: Date, fin: Date) {
-    const clientes = await prisma.cliente.count({ 
-      where: { fechaRegistro: { gte: inicio, lte: fin } } 
+    const clientes = await prisma.cliente.count({
+      where: { fechaRegistro: { gte: inicio, lte: fin } }
     });
     return { cantidad: clientes };
   }
 
   private async getServiciosMasVendidos(inicio: Date, fin: Date, limit: number) {
-    // ✅ FILTRAR SOLO ITEMS DE TRANSACCIONES PAGADAS
-    const items = await prisma.transaccionItem.findMany({ 
-      where: { 
-        transaccion: { 
-          tipo: 'INGRESO', 
-          estadoPago: 'PAGADO',  // ✅ CRÍTICO
-          fecha: { gte: inicio, lte: fin } 
-        } 
-      }, 
-      include: { servicio: true } 
+    const grupos = await prisma.transaccionItem.groupBy({
+      by: ['servicioId'],
+      where: {
+        transaccion: { tipo: 'INGRESO', estadoPago: 'PAGADO', fecha: { gte: inicio, lte: fin } },
+      },
+      _sum: { cantidad: true, subtotal: true },
+      orderBy: { _sum: { cantidad: 'desc' } },
+      take: limit,
     });
 
-    const servicios = items.reduce((acc, item) => { 
-      const id = item.servicioId; 
-      const nombre = item.servicio.nombre; 
-      if (!acc[id]) { 
-        acc[id] = { nombre, cantidad: 0, total: 0 }; 
-      } 
-      acc[id].cantidad += item.cantidad; 
-      acc[id].total += item.subtotal; 
-      return acc; 
-    }, {} as Record<string, any>);
+    const servicioIds = grupos.map(g => g.servicioId);
+    const servicios = await prisma.servicio.findMany({
+      where: { id: { in: servicioIds } },
+      select: { id: true, nombre: true },
+    });
+    const nombrePorId = new Map(servicios.map(s => [s.id, s.nombre]));
 
-    return Object.values(servicios)
-      .sort((a: any, b: any) => b.cantidad - a.cantidad)
-      .slice(0, limit);
+    return grupos.map(g => ({
+      nombre: nombrePorId.get(g.servicioId) || g.servicioId,
+      cantidad: g._sum.cantidad || 0,
+      total: g._sum.subtotal || 0,
+    }));
   }
 
   private async getEmpleadoTop(inicio: Date, fin: Date) {
-    // ✅ FILTRAR SOLO TRANSACCIONES PAGADAS
-    const transacciones = await prisma.transaccion.findMany({ 
-      where: { 
-        tipo: 'INGRESO', 
-        estadoPago: 'PAGADO',  // ✅ CRÍTICO
-        fecha: { gte: inicio, lte: fin }, 
-        empleadoId: { not: null } 
-      }, 
-      include: { empleado: true } 
+    const grupos = await prisma.transaccion.groupBy({
+      by: ['empleadoId'],
+      where: {
+        tipo: 'INGRESO', estadoPago: 'PAGADO',
+        fecha: { gte: inicio, lte: fin },
+        empleadoId: { not: null },
+      },
+      _sum: { total: true },
+      orderBy: { _sum: { total: 'desc' } },
+      take: 1,
     });
 
-    if (transacciones.length === 0) return null;
+    if (grupos.length === 0) return null;
 
-    const porEmpleado = transacciones.reduce((acc, t) => { 
-      const id = t.empleadoId!; 
-      const nombre = t.empleado!.nombre; 
-      if (!acc[id]) { 
-        acc[id] = { nombre, total: 0 }; 
-      } 
-      acc[id].total += t.total; 
-      return acc; 
-    }, {} as Record<string, any>);
+    const top = grupos[0];
+    const empleado = await prisma.empleado.findUnique({
+      where: { id: top.empleadoId! },
+      select: { nombre: true },
+    });
 
-    return Object.values(porEmpleado)
-      .sort((a: any, b: any) => b.total - a.total)[0];
+    return { nombre: empleado?.nombre || 'Desconocido', total: top._sum.total || 0 };
   }
 
   private async getComparativaAnterior(inicio: Date, fin: Date) {
@@ -564,40 +548,29 @@ async getReporteFinanciero(fechaInicio: Date, fechaFin: Date) {
     const inicio = startOfMonth(new Date());
     const fin = endOfMonth(new Date());
 
-    // ✅ FILTRAR SOLO ITEMS DE TRANSACCIONES PAGADAS
-    const items = await prisma.transaccionItem.findMany({
+    const grupos = await prisma.transaccionItem.groupBy({
+      by: ['servicioId'],
       where: {
-        transaccion: {
-          tipo: 'INGRESO',
-          estadoPago: 'PAGADO',  // ✅ CRÍTICO
-          fecha: { gte: inicio, lte: fin }
-        }
+        transaccion: { tipo: 'INGRESO', estadoPago: 'PAGADO', fecha: { gte: inicio, lte: fin } },
       },
-      include: { servicio: true }
+      _sum: { cantidad: true, subtotal: true },
+      orderBy: { _sum: { cantidad: 'desc' } },
+      take: limit,
     });
 
-    const porServicio = items.reduce((acc, item) => {
-      const servicioId = item.servicioId;
-      const servicioNombre = item.servicio.nombre;
-      
-      if (!acc[servicioId]) {
-        acc[servicioId] = {
-          servicioId,
-          nombre: servicioNombre,
-          cantidadVendida: 0,
-          totalGenerado: 0
-        };
-      }
-      
-      acc[servicioId].cantidadVendida += item.cantidad;
-      acc[servicioId].totalGenerado += item.subtotal;
-      
-      return acc;
-    }, {} as Record<string, any>);
+    const servicioIds = grupos.map(g => g.servicioId);
+    const servicios = await prisma.servicio.findMany({
+      where: { id: { in: servicioIds } },
+      select: { id: true, nombre: true },
+    });
+    const nombrePorId = new Map(servicios.map(s => [s.id, s.nombre]));
 
-    return Object.values(porServicio)
-      .sort((a: any, b: any) => b.cantidadVendida - a.cantidadVendida)
-      .slice(0, limit);
+    return grupos.map(g => ({
+      servicioId: g.servicioId,
+      nombre: nombrePorId.get(g.servicioId) || g.servicioId,
+      cantidadVendida: g._sum.cantidad || 0,
+      totalGenerado: g._sum.subtotal || 0,
+    }));
   }
 
   /**

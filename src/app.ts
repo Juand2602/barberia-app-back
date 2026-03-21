@@ -34,8 +34,8 @@ const PORT = process.env.PORT || 3000;
 
 // ==================== MIDDLEWARES ====================
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '100kb' }));
+app.use(express.urlencoded({ limit: '100kb', extended: true }));
 
 // Logging middleware
 app.use((req, res, next) => {
@@ -84,8 +84,11 @@ app.get('/', (req, res) => {
 // ==================== CRON JOBS ====================
 // Limpiar conversaciones inactivas cada 5 minutos
 cron.schedule('*/5 * * * *', async () => {
-  console.log('🧹 Ejecutando limpieza de conversaciones inactivas...');
-  await limpiarConversacionesInactivas();
+  try {
+    await limpiarConversacionesInactivas();
+  } catch (err) {
+    console.error('❌ Error en cron de limpieza:', err);
+  }
 });
 
 // ==================== ERROR HANDLER ====================
