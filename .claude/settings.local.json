@@ -3,7 +3,13 @@
     "allow": [
       "Bash(npm install:*)",
       "Bash(npm uninstall:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(find \"/home/juand/Descargas/barberia-app-Definitiva/barberia-app \\(back\\)/src\" -type f -name \"*.ts\")",
+      "Bash(find:*)",
+      "Bash(wc:*)",
+      "Bash(ls -la \"/home/juand/Descargas/barberia-app-Definitiva/barberia-app \\(back\\)/src/routes/\")",
+      "Bash(ls -la \"/home/juand/Descargas/barberia-app-Definitiva/barberia-app \\(back\\)\")",
+      "Bash(ls:*)"
     ]
   }
 }

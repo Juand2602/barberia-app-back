@@ -5,8 +5,12 @@
   "main": "dist/app.js",
   "scripts": {
     "dev": "nodemon src/app.ts",
+    "dev:bot": "nodemon src/app-bot.ts",
+    "dev:admin": "nodemon src/app-admin.ts",
     "build": "tsc",
     "start": "node dist/app.js",
+    "start:bot": "node dist/app-bot.js",
+    "start:admin": "node dist/app-admin.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
