@@ -930,12 +930,8 @@ export class WhatsAppBotService {
   }
 
   private async crearConversacion(telefono: string) {
-    let cliente = await clientesService.buscarPorTelefono(telefono);
-    
-    if (!cliente) {
-      cliente = await clientesService.crear({ nombre: 'Cliente WhatsApp', telefono });
-    }
-    
+    const cliente = await clientesService.buscarOCrearAtomico(telefono, 'Cliente WhatsApp');
+
     return prisma.conversacion.create({
       data: {
         clienteId: cliente.id,

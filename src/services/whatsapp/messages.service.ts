@@ -20,6 +20,13 @@ export interface ListSection {
 }
 
 export class WhatsAppMessagesService {
+  // Los BSUID (identificador de WhatsApp para usuarios con "username") tienen forma "US.1234...",
+  // a diferencia de un número de teléfono que es solo dígitos. Para enviarles un mensaje, la API
+  // requiere `recipient` en vez de `to`.
+  private destinatario(telefono: string): { to: string } | { recipient: string } {
+    return /^[A-Z]{2}\./.test(telefono) ? { recipient: telefono } : { to: telefono };
+  }
+
   private async sendRequest(endpoint: string, data: any, retries = 2): Promise<any> {
     try {
       const url = `${whatsappConfig.apiUrl}/${whatsappConfig.phoneId}/${endpoint}`;
@@ -46,7 +53,7 @@ export class WhatsAppMessagesService {
     try {
       return await this.sendRequest('messages', {
         messaging_product: 'whatsapp',
-        to: telefono,
+        ...this.destinatario(telefono),
         type: 'text',
         text: { body: mensaje },
       });
@@ -70,7 +77,7 @@ export class WhatsAppMessagesService {
     try {
       const payload: any = {
         messaging_product: 'whatsapp',
-        to: telefono,
+        ...this.destinatario(telefono),
         type: 'image',
         image: {
           link: imageUrl,
@@ -113,7 +120,7 @@ export class WhatsAppMessagesService {
 
       return await this.sendRequest('messages', {
         messaging_product: 'whatsapp',
-        to: telefono,
+        ...this.destinatario(telefono),
         type: 'interactive',
         interactive: {
           type: 'button',
@@ -155,7 +162,7 @@ export class WhatsAppMessagesService {
 
       return await this.sendRequest('messages', {
         messaging_product: 'whatsapp',
-        to: telefono,
+        ...this.destinatario(telefono),
         type: 'interactive',
         interactive: {
           type: 'list',

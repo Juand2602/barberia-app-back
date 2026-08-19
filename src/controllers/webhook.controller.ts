@@ -5,6 +5,8 @@ import { WhatsAppWebhookPayload } from '../types';
 import { whatsappBotService } from '../services/whatsapp/bot.service';
 import { whatsappMessagesService } from '../services/whatsapp/messages.service';
 
+const mensajesProcesados = new Set<string>();
+
 export class WebhookController {
   async verificar(req: Request, res: Response) {
     try {
@@ -27,12 +29,14 @@ export class WebhookController {
   }
 
   async recibirMensaje(req: Request, res: Response) {
+    // Responder 200 de inmediato: si el procesamiento tarda, WhatsApp reintenta el webhook
+    // y genera mensajes duplicados. El procesamiento real sigue en segundo plano.
+    res.sendStatus(200);
+
     try {
       const body: WhatsAppWebhookPayload = req.body;
 
-      if (body.object !== 'whatsapp_business_account') {
-        return res.sendStatus(404);
-      }
+      if (body.object !== 'whatsapp_business_account') return;
 
       // Procesar cada entrada
       for (const entry of body.entry) {
@@ -42,7 +46,16 @@ export class WebhookController {
           // Procesar mensajes
           if (value.messages && value.messages.length > 0) {
             for (const message of value.messages) {
-              await this.procesarMensaje(message);
+              // Ignorar mensajes ya procesados (reintentos del webhook)
+              if (mensajesProcesados.has(message.id)) {
+                console.log(`⚠️ Mensaje duplicado ignorado: ${message.id}`);
+                continue;
+              }
+              mensajesProcesados.add(message.id);
+              // Limpiar el set cada 1000 entradas para evitar uso excesivo de memoria
+              if (mensajesProcesados.size > 1000) mensajesProcesados.clear();
+
+              this.procesarMensaje(message, value.contacts);
             }
           }
 
@@ -54,17 +67,23 @@ export class WebhookController {
           }
         }
       }
-
-      res.sendStatus(200);
     } catch (error) {
       console.error('Error procesando webhook:', error);
-      res.sendStatus(500);
     }
   }
 
-  private async procesarMensaje(message: any) {
+  private async procesarMensaje(message: any, contacts?: Array<{ wa_id?: string; user_id?: string }>) {
     try {
-      const telefono = message.from;
+      // Si el usuario adoptó un "username" de WhatsApp y no compartió su número recientemente,
+      // Meta omite `message.from` y en su lugar manda su BSUID (identificador estable) en `from_user_id`.
+      const telefono = message.from || message.from_user_id || contacts?.[0]?.user_id;
+      if (!message.from) {
+        console.warn(`⚠️ Mensaje sin "from" (posible usuario con username de WhatsApp), usando BSUID de respaldo: ${JSON.stringify({ messageId: message.id, telefono, contacts })}`);
+      }
+      if (!telefono) {
+        console.error(`❌ Mensaje sin remitente identificable, no se puede responder: ${message.id}`);
+        return;
+      }
 
       // Procesar mensajes de texto
       if (message.type === 'text') {
