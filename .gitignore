@@ -1,6 +1,7 @@
 # Dependencies
 node_modules/
 package-lock.json
+.claude/
 
 # Build
 dist/
@@ -33,4 +34,5 @@ logs/
 Thumbs.db
 
 CLAUDE.md
-.claude/
+
+/docs

@@ -47,17 +47,16 @@ export interface WhatsAppWebhookPayload {
   }>;
 }
 
-export type ConversationState = 
+export type ConversationState =
   | 'INICIAL'
-  | 'ESPERANDO_SERVICIO'
+  | 'ESPERANDO_RESPUESTA_EQUIPO'
   | 'ESPERANDO_BARBERO'
   | 'ESPERANDO_NOMBRE'
   | 'ESPERANDO_FECHA'
   | 'ESPERANDO_FECHA_ESPECIFICA'
   | 'ESPERANDO_VER_FOTOS_BARBEROS'
   | 'ESPERANDO_HORA'
-  | 'ESPERANDO_CONFIRMACION'
-  | 'ESPERANDO_RADICADO'
+  | 'ESPERANDO_RESPUESTA_EQUIPO_FIN'
   | 'ESPERANDO_SELECCION_CITA_CANCELAR'
   | 'ESPERANDO_CONFIRMACION_CANCELACION'
   | 'ESPERANDO_RESPUESTA_UBICACION'
@@ -92,6 +91,7 @@ export interface ConversationContext {
     especialidades?: string | null;
   }>;
   flujo?: string;
+  _nombreClienteDb?: string;
 }
 
 // 🌟 NUEVO: Tipos para sistema de sellos

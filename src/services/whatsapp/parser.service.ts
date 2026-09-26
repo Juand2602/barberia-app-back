@@ -32,8 +32,9 @@ export class MessageParserService {
       const añoCompleto = año.length === 2 ? 2000 + parseInt(año) : parseInt(año);
       const fecha = new Date(añoCompleto, parseInt(mes) - 1, parseInt(dia));
       
-      // Validar que la fecha sea válida y no sea anterior a hoy
-      if (!isNaN(fecha.getTime()) && fecha >= hoy) {
+      // Solo se valida que la fecha exista (31/02 no: JS la volvería 03/03). Si es pasada se devuelve
+      // igual: el bot responde "no puedo agendar en fechas pasadas" en vez de "no entendí la fecha".
+      if (!isNaN(fecha.getTime()) && fecha.getDate() === parseInt(dia) && fecha.getMonth() === parseInt(mes) - 1) {
         return fecha;
       }
     }
@@ -101,7 +102,17 @@ export class MessageParserService {
 
   esComandoCancelacion(texto: string): boolean {
     const normalizado = this.normalizarRespuesta(texto);
-    return ['cancelar', 'salir', 'exit', 'atras', 'volver'].includes(normalizado);
+    return ['cancelar', 'salir', 'exit'].includes(normalizado);
+  }
+
+  esComandoMenu(texto: string): boolean {
+    const normalizado = this.normalizarRespuesta(texto);
+    return ['menu'].includes(normalizado);
+  }
+
+  esComandoVolver(texto: string): boolean {
+    const normalizado = this.normalizarRespuesta(texto);
+    return ['volver', 'atras'].includes(normalizado);
   }
 
   /**

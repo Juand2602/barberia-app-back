@@ -15,9 +15,9 @@ export const barberiaConfig = {
   duracionServicioDefecto: 30, // minutos
   
   // 🌟 NUEVO: Servicio que se asignará por defecto en las citas de WhatsApp
-  servicioPredeterminado: process.env.SERVICIO_PREDETERMINADO || 'Corte Básico',
+  servicioPredeterminado: process.env.SERVICIO_PREDETERMINADO || 'Corte Clásico',
 };
 
 export const botConfig = {
-  timeoutConversacion: parseInt(process.env.TIMEOUT_CONVERSACION || '300000'), // 5 min
+  timeoutConversacion: parseInt(process.env.TIMEOUT_CONVERSACION || '600000'), // 10 min
 };

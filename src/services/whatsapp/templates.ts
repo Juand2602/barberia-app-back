@@ -2,15 +2,15 @@
 
 import { barberiaConfig } from '../../config/whatsapp';
 
+export const NOMBRE_PLACEHOLDER_CLIENTE = 'Cliente WhatsApp';
+
 export const MENSAJES = {
-  BIENVENIDA: (nombreBarberia: string = barberiaConfig.nombre) => 
-    `💈 Hola, te saluda de *${nombreBarberia}* es un gusto atenderte 💈
+  BIENVENIDA: (nombreBarberia: string = barberiaConfig.nombre, nombreCliente?: string) =>
+    `💈 Hola${nombreCliente ? ` ${nombreCliente}` : ''}, te saluda de *${nombreBarberia}* es un gusto atenderte 💈
 
 *¿Necesitas información de...?*
 
-Selecciona una opción usando los botones:
-
-Escribe *"cancelar"* en cualquier momento para salir del proceso.`,
+Toca *Ver opciones* para elegir:`,
 
   UBICACION: (direccion: string = barberiaConfig.direccion) =>
     `💈 Estamos ubicados en *${direccion}*`,
@@ -34,26 +34,23 @@ Escribe *"cancelar"* en cualquier momento para salir del proceso.`,
 
   ELEGIR_BARBERO: (barberos: Array<{ id: string; nombre: string }>) => {
     let mensaje = `💈 ¿Con cual de nuestros profesionales desea su cita?\n\n*Nuestros Profesionales*\n\n`;
-    mensaje += `💈 Por favor envíeme de ésta lista el número que corresponde al profesional con el cual desea su cita\n\n`;
-    
+    mensaje += `💈 Responde con el *número* del profesional que prefieres\n\n`;
+
     barberos.forEach((barbero, index) => {
       mensaje += `✂️ ${index + 1} ${barbero.nombre}\n`;
     });
-    
-    mensaje += `\nEn caso que no sea ninguno de los anteriores por favor responda *Ninguno*`;
-    mensaje += `\n\nEscribe *"cancelar"* en cualquier momento para salir del proceso.`;
-    
-    return mensaje;
+
+    return mensaje.trim();
   },
 
   ELEGIR_BARBERO_TEXTO: () =>
-    `💈 ¿Con cual de nuestros profesionales desea su cita?\n\nSelecciona un barbero de la lista o escribe "ninguno" si ninguno te conviene.\n\nEscribe *"cancelar"* en cualquier momento para salir del proceso.`,
+    `💈 ¿Con cual de nuestros profesionales desea su cita?`,
 
   SOLICITAR_NOMBRE_COMPLETO: () =>
-    `💈 ¿Podría indicarme su *nombre y apellido* por favor?\n\nEscribe *"cancelar"* en cualquier momento para salir del proceso.`,
+    `💈 ¿Podría indicarme su *nombre y apellido* por favor?`,
 
   NOMBRE_INVALIDO: () =>
-    `💈 Por favor lea con atención y responda correctamente\n\nIntente de nuevo por favor\n\nEscribe *"cancelar"* en cualquier momento para salir del proceso.`,
+    `💈 Necesito su *nombre y apellido*, por ejemplo: *Juan Pérez*.`,
 
   SOLICITAR_FECHA: () =>
     `💈 ¿Para cuando desea su cita?
@@ -69,22 +66,17 @@ También puede escribir una *fecha específica* (ej: 25/12/2023) o un *día de l
 Escribe *"cancelar"* en cualquier momento para salir del proceso.`,
 
   SOLICITAR_FECHA_TEXTO: () =>
-    `💈 ¿Para cuando desea su cita?
-
-Seleccione una opción usando los botones.
-
-Escribe *"cancelar"* en cualquier momento para salir del proceso.`,
+    `💈 ¿Para cuando desea su cita?`,
 
   SOLICITAR_FECHA_ESPECIFICA: () =>
-    `💈 Por favor indique la *fecha* deseada:
+    `💈 Indique la *fecha* deseada (hasta con 7 días de anticipación):
 
-Puede escribir:
+📅 Un día de la semana (ej: *viernes*)
 
-📅 Un día de la semana (ej: *"viernes", "sábado"*)
+📅 Una fecha (ej: *${ejemploFecha()}*)`,
 
-📅 Una fecha específica (ej: *"25/12/2024"*)
-
-Escribe *"cancelar"* en cualquier momento para salir del proceso.`,
+  FECHA_NO_ENTENDIDA: (texto: string) =>
+    `🧑🏾‍🦲 No entendí la fecha "${texto}".\n\nIntente con un día de la semana (ej: *viernes*) o una fecha (ej: *${ejemploFecha()}*).`,
 
   CONSULTANDO_AGENDA: () =>
     `💈 Un momento por favor, voy a consultar la agenda...`,
@@ -96,20 +88,19 @@ Escribe *"cancelar"* en cualquier momento para salir del proceso.`,
       mensaje += `✂️ ${horario.numero}. ${horario.hora}\n\n`;
     });
     
-    mensaje += `💈 Por favor envíeme el *número del turno* que desea.\n\n`;
-    mensaje += `Si no desea ninguno de los turnos disponibles envíeme la palabra *Cancelar*`;
-    
+    mensaje += `💈 Responde con el *número del turno* que deseas.`;
+
     return mensaje;
   },
 
   HORARIOS_DISPONIBLES_TEXTO: () =>
-    `💈 Tengo los siguientes turnos disponibles.\n\nSelecciona un horario de la lista o envíame el número del turno.\n\nSi no desea ninguno de los turnos disponibles envíeme la palabra *Cancelar*`,
+    `💈 Tengo los siguientes turnos disponibles.\n\nSelecciona un horario de la lista.`,
 
   NO_HAY_HORARIOS: () =>
     `💈 Lo siento, no hay turnos disponibles para ese día.`,
 
   HORARIO_YA_OCUPADO: () =>
-    `💈 Lo siento, ese horario ya ha sido ocupado por otro cliente.\n\nPor favor seleccione otro horario de la lista disponible.`,
+    `💈 Lo siento, ese horario acaba de ser ocupado por otro cliente.`,
 
   CITA_CONFIRMADA: (datos: {
     radicado: string;
@@ -135,12 +126,6 @@ Escribe *"cancelar"* en cualquier momento para salir del proceso.`,
 
 ¡Le esperamos! 💈`,
 
-  SOLICITAR_RADICADO: () =>
-    `💈 Para cancelar su cita necesito el código de radicado\n\n¿Tiene con usted el código de su cita?\n\nEscribe *"cancelar"* en cualquier momento para salir del proceso.`,
-
-  SIN_RADICADO_BUSCAR_CITAS: () =>
-    `💈 No hay problema, déjeme buscar sus citas activas...`,
-
   MOSTRAR_CITAS_ACTIVAS: (citas: Array<{
     numero: number;
     radicado: string;
@@ -164,16 +149,13 @@ Escribe *"cancelar"* en cualquier momento para salir del proceso.`,
   },
 
   MOSTRAR_CITAS_ACTIVAS_TEXTO: () =>
-    `📋 *Sus citas activas:*\n\nSelecciona la cita que deseas cancelar de la lista o envía el código de radicado directamente.`,
+    `📋 *Sus citas activas:*\n\nSelecciona la cita que deseas cancelar.`,
 
   SIN_CITAS_ACTIVAS: () =>
-    `💈 No encontré citas activas asociadas a su número de teléfono\n\nSi está seguro de que tiene una cita, por favor verifique el código de radicado y envíemelo directamente`,
-
-  SOLICITAR_CODIGO_RADICADO: () =>
-    `💈 Por favor envíeme el código de su cita\n\n💡 También puede enviar solo los *números* (ej: 123456) y lo buscaré\n\nEscribe *"cancelar"* en cualquier momento para salir del proceso.`,
+    `💈 No encontré citas activas asociadas a su número de teléfono.`,
 
   RADICADO_NO_ENCONTRADO: () =>
-    `💈 No encontré ninguna cita con ese código\n\nPor favor verifique e intente nuevamente, o responda *"no"* para ver sus citas activas\n\nEscribe *"cancelar"* en cualquier momento para salir del proceso.`,
+    `💈 No encontré ninguna cita con ese código. Elige una cita de la lista o vuelve al menú.`,
 
   CONFIRMAR_CANCELACION: (datos: {
     radicado: string;
@@ -189,13 +171,13 @@ Escribe *"cancelar"* en cualquier momento para salir del proceso.`,
 🔖 Código: ${datos.radicado}`,
 
   CITA_CANCELADA: () =>
-    `✅ *Su cita ha sido cancelada exitosamente*\n\n💈 Si desea agendar una nueva cita, puede escribirnos cuando guste`,
+    `✅ *Su cita ha sido cancelada exitosamente*\n\n💈 ¿Le puedo servir en algo más?`,
 
   DESPEDIDA: () =>
     `💈 Ha sido un placer servirle, espero que mi atención haya sido de su agrado, le deseo un feliz resto de día`,
 
   OPCION_INVALIDA: () =>
-    `💈 Por favor lea con atención y responda correctamente\n\nIntente de nuevo por favor`,
+    `💈 No entendí su respuesta. Por favor use las opciones del mensaje anterior.`,
 
   ERROR_SERVIDOR: () =>
     `💈 Lo siento, hubo un problema técnico. Por favor intente nuevamente en unos momentos.`,
@@ -205,6 +187,12 @@ Escribe *"cancelar"* en cualquier momento para salir del proceso.`,
 };
 
 // ==================== HELPERS ====================
+
+// Fecha de ejemplo (dentro de 3 días, DD/MM/AAAA) para los textos de ayuda: nunca queda desactualizada.
+const ejemploFecha = (): string => {
+  const d = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+};
 
 export const formatearPrecio = (precio: number): string => {
   return `${(precio / 1000).toLocaleString('es-CO')} mil pesos`;
@@ -244,7 +232,22 @@ export const generarRadicado = (): string => {
   return `RAD-${codigo}`;
 };
 
+// Palabras de navegación/comandos que nunca son parte de un nombre (sin acentos ni mayúsculas).
+const PALABRAS_NO_NOMBRE = new Set([
+  'menu', 'volver', 'atras', 'cancelar', 'salir', 'exit', 'ninguno',
+  'agendar', 'cita', 'fecha', 'hola', 'gracias', 'hoy', 'manana',
+]);
+
 export const validarNombreCompleto = (nombre: string): boolean => {
-  const palabras = nombre.trim().split(/\s+/);
-  return palabras.length >= 2 && palabras.every(p => p.length >= 2);
+  const texto = nombre.trim();
+
+  // Solo letras (con acentos), espacios, puntos, apóstrofes y guiones: rechaza "12 pm", "25/12", "menu_agendar"
+  if (!/^[\p{L}][\p{L}\s.'’-]*$/u.test(texto)) return false;
+
+  const palabras = texto.split(/\s+/);
+  if (palabras.length < 2 || !palabras.every(p => p.length >= 2)) return false;
+
+  return !palabras.some(p =>
+    PALABRAS_NO_NOMBRE.has(p.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f.'’-]/g, ''))
+  );
 };
