@@ -139,7 +139,8 @@ model Cita {
   motivoCancelacion String?
   
   googleEventId   String?
-  
+  recordatorioEnviado Boolean @default(false)
+
   cliente         Cliente  @relation(fields: [clienteId], references: [id])
   empleado        Empleado @relation(fields: [empleadoId], references: [id])
   transacciones   Transaccion[]

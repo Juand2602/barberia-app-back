@@ -188,6 +188,34 @@ export class WhatsAppMessagesService {
     }
   }
 
+  /**
+   * Envía un mensaje de plantilla (requerido para contactar al cliente fuera de la ventana de
+   * 24h de conversación, ej. recordatorios). La plantilla debe estar aprobada en Meta; `parametros`
+   * llena las variables {{1}}, {{2}}... del cuerpo, en el mismo orden en que Meta las numera.
+   */
+  async enviarPlantilla(telefono: string, nombrePlantilla: string, idioma: string, parametros: string[]): Promise<any> {
+    try {
+      return await this.sendRequest('messages', {
+        messaging_product: 'whatsapp',
+        ...this.destinatario(telefono),
+        type: 'template',
+        template: {
+          name: nombrePlantilla,
+          language: { code: idioma },
+          components: [
+            {
+              type: 'body',
+              parameters: parametros.map(valor => ({ type: 'text', text: valor })),
+            },
+          ],
+        },
+      });
+    } catch (error) {
+      console.error(`Error al enviar plantilla "${nombrePlantilla}" a ${telefono}:`, error);
+      throw error;
+    }
+  }
+
   async marcarComoLeido(messageId: string): Promise<any> {
     try {
       return await this.sendRequest('messages', {

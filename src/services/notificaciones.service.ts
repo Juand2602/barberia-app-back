@@ -162,7 +162,10 @@ _Notificación automática del sistema_ 💈`;
   }
 
   /**
-   * 🌟 FUTURO: Recordatorio de cita (1 hora antes)
+   * Recordatorio de cita (~1 hora antes), vía plantilla de WhatsApp "recordatorio_cita_cliente".
+   * Un recordatorio se manda fuera de la ventana de 24h de conversación (el cliente normalmente
+   * no le ha escrito al bot recientemente), así que tiene que ser plantilla aprobada por Meta —
+   * un mensaje de texto libre fallaría en la mayoría de los casos.
    */
   async enviarRecordatorio(citaId: string) {
     try {
@@ -176,20 +179,26 @@ _Notificación automática del sistema_ 💈`;
 
       if (!cita || cita.estado !== 'CONFIRMADA') return;
 
-      const mensajeCliente = `🔔 *RECORDATORIO DE CITA*
+      await whatsappMessagesService.enviarPlantilla(
+        cita.cliente.telefono,
+        'recordatorio_cita_cliente',
+        'es',
+        [
+          cita.cliente.nombre,
+          cita.empleado.nombre,
+          formatearFecha(cita.fechaHora),
+          formatearHora(cita.fechaHora.toTimeString().substring(0, 5)),
+          cita.servicioNombre,
+          cita.radicado,
+        ]
+      );
 
-Hola ${cita.cliente.nombre}, te recordamos tu cita en 1 hora:
+      await prisma.cita.update({
+        where: { id: citaId },
+        data: { recordatorioEnviado: true },
+      });
 
-✂️ *Servicio:* ${cita.servicioNombre}
-👨‍🦲 *Barbero:* ${cita.empleado.nombre}
-⏰ *Hora:* ${formatearHora(cita.fechaHora.toTimeString().substring(0, 5))}
-📋 *Radicado:* ${cita.radicado}
-
-¡Te esperamos! 💈`;
-
-      await whatsappMessagesService.enviarMensaje(cita.cliente.telefono, mensajeCliente);
-      
-      console.log(`✅ Recordatorio enviado al cliente ${cita.cliente.nombre}`);
+      console.log(`✅ Recordatorio enviado al cliente ${cita.cliente.nombre} (cita ${cita.radicado})`);
     } catch (error) {
       console.error('Error enviando recordatorio:', error);
     }
@@ -197,3 +206,33 @@ Hola ${cita.cliente.nombre}, te recordamos tu cita en 1 hora:
 }
 
 export const notificacionesService = new NotificacionesService();
+
+/**
+ * Busca citas confirmadas que empiezan en ~1 hora (ventana de 50-70 min, pensada para correr
+ * cada 5 min: ancha lo suficiente para no perder ninguna si el servidor estuvo caído un rato,
+ * sin solapar huecos entre una corrida del cron y la siguiente) y a las que no se les haya
+ * enviado el recordatorio todavía. `recordatorioEnviado` evita que una misma cita reciba el
+ * recordatorio dos veces si cae dentro de la ventana en más de una corrida del cron.
+ */
+export async function enviarRecordatoriosPendientes() {
+  const ahora = new Date();
+  const desde = new Date(ahora.getTime() + 50 * 60 * 1000);
+  const hasta = new Date(ahora.getTime() + 70 * 60 * 1000);
+
+  const citas = await prisma.cita.findMany({
+    where: {
+      estado: 'CONFIRMADA',
+      recordatorioEnviado: false,
+      fechaHora: { gte: desde, lt: hasta },
+    },
+    select: { id: true },
+  });
+
+  for (const cita of citas) {
+    await notificacionesService.enviarRecordatorio(cita.id);
+  }
+
+  if (citas.length > 0) {
+    console.log(`🔔 ${citas.length} recordatorio(s) de cita procesado(s)`);
+  }
+}

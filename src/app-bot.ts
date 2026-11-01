@@ -12,6 +12,7 @@ process.env.TZ = 'America/Bogota';
 
 import webhookRoutes from './routes/webhook.routes';
 import { limpiarConversacionesInactivas } from './services/whatsapp/bot.service';
+import { enviarRecordatoriosPendientes } from './services/notificaciones.service';
 
 dotenv.config();
 
@@ -52,6 +53,15 @@ cron.schedule('*/5 * * * *', async () => {
     await limpiarConversacionesInactivas();
   } catch (err) {
     console.error('❌ Error en cron de limpieza:', err);
+  }
+});
+
+// Recordatorio de cita (~1 hora antes) cada 5 minutos
+cron.schedule('*/5 * * * *', async () => {
+  try {
+    await enviarRecordatoriosPendientes();
+  } catch (err) {
+    console.error('❌ Error en cron de recordatorios:', err);
   }
 });
 
