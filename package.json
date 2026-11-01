@@ -4,6 +4,7 @@
   "description": "Backend para sistema de barbería con integración WhatsApp",
   "main": "dist/app.js",
   "scripts": {
+    "postinstall": "prisma generate",
     "dev": "nodemon src/app.ts",
     "dev:bot": "nodemon src/app-bot.ts",
     "dev:admin": "nodemon src/app-admin.ts",

@@ -62,7 +62,17 @@ export class WebhookController {
           // Procesar estados de mensajes (entregados, leídos, etc.)
           if (value.statuses && value.statuses.length > 0) {
             for (const status of value.statuses) {
-              console.log(`📊 Estado del mensaje ${status.id}: ${status.status}`);
+              if (status.status === 'failed' && status.errors?.length) {
+                // Meta manda el motivo real en "errors", nunca en el campo "status" — sin esto
+                // un envío fallido (plantilla no aprobada, número inválido, límite de mensajería,
+                // etc.) solo se ve como "failed" sin poder saber por qué.
+                console.log(`📊 Estado del mensaje ${status.id}: failed (destinatario: ${status.recipient_id})`);
+                status.errors.forEach((err: any) => {
+                  console.log(`   ❌ código ${err.code} - ${err.title}${err.error_data?.details ? `: ${err.error_data.details}` : ''}`);
+                });
+              } else {
+                console.log(`📊 Estado del mensaje ${status.id}: ${status.status}`);
+              }
             }
           }
         }
